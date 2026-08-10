@@ -1,0 +1,26 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+docker/mongodb/
+Report.md
+AGENT.md
+AGENTS.md
+ENHANCEMENTS.md
+src/models/db_schemas/mini_rag/alembic.ini
+RAG_EFFICIENCY_ENHANCEMENTS.md
