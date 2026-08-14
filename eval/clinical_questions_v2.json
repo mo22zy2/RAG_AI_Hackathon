@@ -1,0 +1,312 @@
+{
+  "topic": "Asthma Guidance",
+  "description": "Golden-labeled retrieval evaluation set. Each question lists expected golden chunks as (document hint, page window, content keywords). A retrieved chunk is relevant when it matches ANY golden entry: document_name contains the hint (case-insensitive), page_number is within [page_from-2, page_to+2], and the chunk text contains at least one keyword (case-insensitive). Questions with expect_hit=false have no golden entry on purpose — they test whether the retrieval pipeline correctly returns low-confidence / no-match results for out-of-corpus topics, instead of confidently retrieving irrelevant chunks.",
+  "questions": [
+    {
+      "id": "q01",
+      "category": "diagnosis",
+      "question": "What objective test results confirm a diagnosis of asthma in adults with a history suggestive of asthma?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 9,
+          "page_to": 10,
+          "keywords": ["50 ppb", "bronchodilator", "eosinophil", "fev1"]
+        }
+      ]
+    },
+    {
+      "id": "q02",
+      "category": "pharmacology",
+      "question": "What is the initial pharmacological treatment for newly diagnosed asthma in people aged 12 and over?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 18,
+          "page_to": 18,
+          "keywords": ["low-dose ics/formoterol", "as-needed", "air therapy"]
+        }
+      ]
+    },
+    {
+      "id": "q03",
+      "category": "pharmacology",
+      "question": "What treatment should be offered when asthma is not controlled on low-dose MART?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 19,
+          "page_to": 19,
+          "keywords": ["moderate-dose mart", "not controlled on low-dose mart"]
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "category": "monitoring",
+      "question": "What should be checked at every asthma review to monitor control?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 14,
+          "page_to": 15,
+          "keywords": ["oral corticosteroid", "reliever inhaler", "admissions", "every review"]
+        }
+      ]
+    },
+    {
+      "id": "q05",
+      "category": "self-management",
+      "question": "When should the personalised written asthma action plan be reviewed?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 29,
+          "page_to": 29,
+          "keywords": ["annual reviews", "hospital admission", "acute consultations"]
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "category": "pharmacology",
+      "question": "How should maintenance therapy be stepped down for well-controlled asthma?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 26,
+          "page_to": 26,
+          "keywords": ["decreasing maintenance", "risks and benefits", "asthma action plan"]
+        }
+      ]
+    },
+    {
+      "id": "q07",
+      "category": "pharmacology",
+      "question": "What is GINA's preferred controller and reliever treatment at Step 1 for adults and adolescents?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 23,
+          "page_to": 24,
+          "keywords": ["as-needed low dose ics-formoterol", "step 1", "anti-inflammatory reliever"]
+        }
+      ]
+    },
+    {
+      "id": "q08",
+      "category": "pharmacology",
+      "question": "What is MART (maintenance-and-reliever therapy) and when is it recommended?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 23,
+          "page_to": 23,
+          "keywords": ["maintenance-and-reliever", "mart", "ics-formoterol"]
+        }
+      ]
+    },
+    {
+      "id": "q09",
+      "category": "self-management",
+      "question": "Which non-pharmacologic strategies does GINA recommend for asthma management?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 20,
+          "page_to": 20,
+          "keywords": ["smoking cessation", "physical activity", "weight reduction", "vaccination"]
+        },
+        {
+          "doc_hint": "gina",
+          "page_from": 62,
+          "page_to": 66,
+          "keywords": ["smoking cessation", "physical activity", "weight reduction", "vaccination"]
+        }
+      ]
+    },
+    {
+      "id": "q10",
+      "category": "safety",
+      "question": "Why does GINA advise against SABA-only treatment?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 15,
+          "page_to": 15,
+          "keywords": ["saba-only", "airway inflammation", "risk of death", "worse lung function"]
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "category": "comorbidity",
+      "question": "What is recommended for managing asthma in people with obesity?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 32,
+          "page_to": 32,
+          "keywords": ["weight reduction", "5-10%", "improve asthma control"]
+        }
+      ]
+    },
+    {
+      "id": "q12",
+      "category": "comorbidity",
+      "question": "How is aspirin-exacerbated respiratory disease (AERD) recognised and managed?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 32,
+          "page_to": 32,
+          "keywords": ["aspirin", "nsaid", "nasal polyposis", "avoid all nonsteroidal"]
+        }
+      ]
+    },
+    {
+      "id": "q13",
+      "category": "risk",
+      "question": "Which features identify patients at increased risk of asthma exacerbations?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 12,
+          "page_to": 12,
+          "keywords": ["fev1 <60%", "severe exacerbation in past year", "poor lung function"]
+        }
+      ]
+    },
+    {
+      "id": "q14",
+      "category": "special-population",
+      "question": "What does the NHLBI quick reference recommend for preventing exercise-induced bronchospasm?",
+      "golden": [
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 4,
+          "page_to": 4,
+          "keywords": ["exercise", "saba", "ltra", "cromolyn", "before exercise"]
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "category": "self-management",
+      "question": "What are the key components of a written asthma action plan?",
+      "golden": [
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 3,
+          "page_to": 3,
+          "keywords": ["written asthma action plan", "daily actions", "adjust medications", "seek medical care"]
+        }
+      ]
+    },
+    {
+      "id": "q16",
+      "category": "monitoring",
+      "question": "How should asthma therapy be adjusted based on level of control at follow-up visits?",
+      "golden": [
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 6,
+          "page_to": 6,
+          "keywords": ["step up", "step down", "adherence", "inhaler technique"]
+        }
+      ]
+    },
+    {
+      "id": "q17",
+      "category": "pharmacology",
+      "question": "What is the preferred treatment at Step 1 for persistent asthma according to NHLBI?",
+      "golden": [
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 7,
+          "page_to": 7,
+          "keywords": ["low-dose ics", "saba as needed", "preferred treatment"]
+        }
+      ]
+    },
+    {
+      "id": "q18",
+      "category": "pharmacology",
+      "question": "Which controller and reliever strategy does GINA recommend across all treatment steps, and why?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 59,
+          "page_to": 60,
+          "keywords": ["preferred controller and reliever", "ics-formoterol", "track 1"]
+        },
+        {
+          "doc_hint": "gina",
+          "page_from": 17,
+          "page_to": 17,
+          "keywords": ["saba-only", "track 1"]
+        }
+      ]
+    },
+    {
+      "id": "q19",
+      "category": "multi-chunk",
+      "question": "How do NICE and NHLBI recommend confirming an asthma diagnosis?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 9,
+          "page_to": 10,
+          "keywords": ["50 ppb", "bronchodilator", "spirometry"]
+        },
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 2,
+          "page_to": 2,
+          "keywords": ["spirometry", "partially reversible", "airway obstruction"]
+        }
+      ]
+    },
+    {
+      "id": "q20",
+      "category": "multi-chunk",
+      "question": "Compare the recommendations for written asthma action plans across the guidelines.",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 29,
+          "page_to": 29,
+          "keywords": ["personalised action plan", "annual reviews"]
+        },
+        {
+          "doc_hint": "gina",
+          "page_from": 20,
+          "page_to": 20,
+          "keywords": ["written asthma action plan", "monitor symptoms"]
+        },
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 3,
+          "page_to": 3,
+          "keywords": ["written asthma action plan", "partnership with patient"]
+        }
+      ]
+    },
+    {
+      "id": "q21",
+      "category": "true-negative",
+      "question": "What GOLD stage criteria does the guidance use for COPD severity classification?",
+      "expect_hit": false,
+      "golden": [],
+      "notes": "Deliberately out-of-corpus: none of the indexed NICE/GINA/NHLBI documents specify a biologic dosing schedule for tezepelumab. A well-behaved retrieval pipeline should return low similarity scores across all modes/K here rather than confidently surfacing an unrelated chunk. Score this case by verifying the top retrieved chunk's similarity score falls below RETRIEVAL_SCORE_THRESHOLD, not by the standard hit-rate rule used for q01-q20."
+    },
+    {
+      "id": "q22",
+      "category": "true-negative",
+      "question": "What blood pressure targets does the asthma guidance recommend for comorbid hypertension?",
+      "expect_hit": false,
+      "golden": [],
+      "notes": "Out-of-scope clinical topic phrased inside an asthma-flavored question, to check the retrieval layer doesn't force a spurious match just because 'asthma' co-occurs with an unrelated clinical term."
+    }
+  ]
+}

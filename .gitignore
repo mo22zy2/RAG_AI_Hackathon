@@ -17,10 +17,20 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Docker
 docker/mongodb/
-Report.md
-AGENT.md
-AGENTS.md
-ENHANCEMENTS.md
+
+# Sourced guideline PDFs (large binaries)
+Dataset/*.pdf
+
+# Alembic config (copied from example)
 src/models/db_schemas/mini_rag/alembic.ini
-RAG_EFFICIENCY_ENHANCEMENTS.md
+
+# Eval results (regenerated each run — source files are tracked)
+eval/results_*.md
+eval/answer_results_*.md
+eval/answer_diagnostics_*.json
+eval/answer_rows_*.json
+eval/retrieval_rows_*.json
+eval/chunk_diagnostics_*.md
+eval/benchmark_dashboard_*.md
