@@ -1,22 +1,28 @@
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, FileResponse
 from routes import base, data ,nlp
 from helpers.config import get_settings
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
+from stores.rerank.RerankProviderFactory import RerankProviderFactory
 from stores.templates.template_parser import Template_Parser
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine,AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 
+STATIC_DIR = Path(__file__).parent / "static"
+
 app = FastAPI()
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8080", "http://localhost:8080"],
-    allow_methods=["POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=[r"^(https?://)?(localhost|127\.0\.0\.1)(:\d+)?$"],
+    allow_origin_regex=r"^(https?://)?(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 
@@ -38,6 +44,7 @@ async def startup_span():
     
     llm_provider_factory = LLMProviderFactory(config=settings)
     vectordb_provider_factory= VectorDBProviderFactory(config=settings,db_client=app.db_client)
+    rerank_provider_factory = RerankProviderFactory(config=settings)
     
     app.generation_client=llm_provider_factory.create_provider(provider=settings.GENERATION_BACKEND)
     app.generation_client.set_generation_model(model_id=settings.GENERATION_MODEL_ID)
@@ -49,7 +56,8 @@ async def startup_span():
         model_id=settings.EMBEDDING_MODEL_ID,
         embedding_size=settings.EMBEDDING_MODEL_SIZE
 )
-# Vector DB app settings
+# Rerank client
+    app.rerank_client=rerank_provider_factory.create_provider(provider=settings.RERANK_BACKEND)
 
 
 
@@ -81,3 +89,11 @@ app.on_event("shutdown")(shutdown_span)
 app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(nlp.nlp_router)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_ui():
+    index = STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index, media_type="text/html")
+    return HTMLResponse("<h1>Mini RAG</h1><p>Frontend not built yet. Use <a href='/docs'>Swagger</a>.</p>")

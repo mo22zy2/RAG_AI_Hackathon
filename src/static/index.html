@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini RAG — Clinical Asthma Q&A</title>
+<style>
+  :root {
+    --bg: #0f172a; --surface: #1e293b; --border: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
+    --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header .badge { font-size: 11px; background: var(--accent); color: var(--bg); padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .header .subtitle { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+
+  .query-bar { display: flex; gap: 8px; margin-bottom: 24px; }
+  .query-bar input { flex: 1; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 14px; outline: none; }
+  .query-bar input:focus { border-color: var(--accent); }
+  .query-bar select { padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 13px; cursor: pointer; }
+  .query-bar button { padding: 12px 24px; background: var(--accent); color: var(--bg); border: none; border-radius: var(--radius); font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .query-bar button:hover { opacity: 0.9; }
+  .query-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .status { padding: 12px 16px; border-radius: var(--radius); font-size: 13px; margin-bottom: 16px; display: none; }
+  .status.loading { display: block; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
+  .status.error { display: block; background: #451a1a; border: 1px solid #7f1d1d; color: var(--red); }
+  .status.success { display: block; background: #14532d; border: 1px solid #166534; color: var(--green); }
+
+  .section { margin-bottom: 20px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+
+  .answer-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; line-height: 1.7; font-size: 14px; }
+  .answer-box .disclaimer { margin-top: 12px; padding: 10px 14px; background: #422006; border: 1px solid #92400e; border-radius: 6px; font-size: 12px; color: var(--yellow); }
+
+  .metrics { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; }
+  .metric .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .metric .value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .metric .value.good { color: var(--green); }
+  .metric .value.bad { color: var(--red); }
+
+  .evidence-grid { display: grid; gap: 8px; }
+  .evidence-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; }
+  .evidence-card .rank { font-size: 12px; color: var(--muted); font-weight: 600; padding-top: 2px; }
+  .evidence-card .doc-name { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .evidence-card .meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .evidence-card .text { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; max-height: 60px; overflow: hidden; }
+  .evidence-card .score { font-size: 13px; font-weight: 600; padding-top: 2px; }
+  .evidence-card .score.high { color: var(--green); }
+  .evidence-card .score.mid { color: var(--yellow); }
+  .evidence-card .score.low { color: var(--red); }
+
+  .citations-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .citation-tag { font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; }
+  .citation-tag.supported { border-color: #166534; color: var(--green); }
+  .citation-tag.unsupported { border-color: #7f1d1d; color: var(--red); }
+
+  .refusal-box { background: #451a1a; border: 1px solid #7f1d1d; border-radius: var(--radius); padding: 20px; }
+  .refusal-box h3 { color: var(--red); font-size: 14px; margin-bottom: 8px; }
+  .refusal-box p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  .hidden { display: none; }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Mini RAG</h1>
+  <span class="badge">Clinical Asthma Q&A</span>
+  <span class="subtitle">GINA 2026 &middot; NICE NG80 &middot; NHLBI EPR-4</span>
+</div>
+
+<div class="container">
+  <div class="query-bar">
+    <input id="query" type="text" placeholder="Ask a clinical asthma question..." autofocus>
+    <select id="mode">
+      <option value="rerank">Hybrid + Rerank</option>
+      <option value="hybrid">Hybrid</option>
+      <option value="vector">Vector</option>
+      <option value="keyword">Keyword</option>
+    </select>
+    <button id="askBtn" onclick="ask()">Ask</button>
+  </div>
+
+  <div id="status" class="status hidden"></div>
+
+  <div id="empty" class="empty-state">
+    <div class="icon">&#x1F50D;</div>
+    <p>Ask a question about asthma guidelines to see evidence-grounded answers with page-level citations.</p>
+  </div>
+
+  <div id="results" class="hidden">
+    <!-- Answer -->
+    <div class="section" id="answerSection">
+      <div class="section-title">Answer</div>
+      <div class="answer-box">
+        <div id="answerText"></div>
+        <div id="disclaimer" class="disclaimer hidden"></div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="section" id="metricsSection">
+      <div class="section-title">Quality Metrics</div>
+      <div class="metrics" id="metricsGrid"></div>
+    </div>
+
+    <!-- Citations -->
+    <div class="section" id="citationsSection">
+      <div class="section-title">Citations</div>
+      <div class="citations-list" id="citationsList"></div>
+    </div>
+
+    <!-- Evidence Panel -->
+    <div class="section" id="evidenceSection">
+      <div class="section-title">Evidence Panel</div>
+      <div class="evidence-grid" id="evidenceGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const PROJECT_ID = 1;
+
+document.getElementById('query').addEventListener('keydown', e => {
+  if (e.key === 'Enter') ask();
+});
+
+async function ask() {
+  const q = document.getElementById('query').value.trim();
+  if (!q) return;
+
+  const mode = document.getElementById('mode').value;
+  const isRerank = mode === 'rerank';
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+  const emptyEl = document.getElementById('empty');
+  const btn = document.getElementById('askBtn');
+
+  btn.disabled = true;
+  statusEl.className = 'status loading';
+  statusEl.textContent = 'Retrieving evidence and generating answer...';
+  resultsEl.className = 'hidden';
+  emptyEl.className = 'hidden';
+
+  try {
+    const payload = {
+      text: q,
+      limit: 8,
+      retrieval_mode: isRerank ? 'hybrid' : mode,
+      rerank: isRerank,
+      expand_query: true,
+    };
+
+    const res = await fetch(`${API}/api/v1/nlp/index/answer/${PROJECT_ID}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    const data = await res.json();
+
+    statusEl.className = 'hidden';
+    btn.disabled = false;
+
+    const isRefusal = data.risk_assessment?.risk_level === 'refuse_redirect'
+                   || data.confidence?.generation_allowed === false
+                   || !data.answer;
+
+    if (isRefusal) {
+      showRefusal(data);
+    } else {
+      showAnswer(data);
+    }
+  } catch (err) {
+    statusEl.className = 'status error';
+    statusEl.textContent = `Error: ${err.message}`;
+    btn.disabled = false;
+  }
+}
+
+function showAnswer(data) {
+  const resultsEl = document.getElementById('results');
+  const answerText = document.getElementById('answerText');
+  const disclaimer = document.getElementById('disclaimer');
+  const metricsGrid = document.getElementById('metricsGrid');
+  const citationsList = document.getElementById('citationsList');
+  const evidenceGrid = document.getElementById('evidenceGrid');
+
+  // Answer
+  answerText.textContent = data.answer || 'No answer generated.';
+  if (data.disclaimer) {
+    disclaimer.textContent = data.disclaimer;
+    disclaimer.className = 'disclaimer';
+  } else {
+    disclaimer.className = 'disclaimer hidden';
+  }
+
+  // Metrics
+  const q = data.quality || {};
+  metricsGrid.innerHTML = [
+    metric('Faithfulness', (q.citation_faithfulness ?? 1).toFixed(2), q.citation_faithfulness >= 0.95),
+    metric('Unsupported', (q.unsupported_claim_rate ?? 0).toFixed(2), (q.unsupported_claim_rate ?? 0) === 0),
+    metric('Citations', (q.citations_found ?? 0), null),
+    metric('Chunks', (data.evidence_panel?.total_selected ?? 0), null),
+  ].join('');
+
+  // Citations
+  const cites = data.citations || q.citations || [];
+  citationsList.innerHTML = cites.length
+    ? cites.map(c => `<span class="citation-tag ${c.supported ? 'supported' : 'unsupported'}">${esc(c.document)}, p. ${c.page_number}${c.supported ? ' &#10003;' : ' &#10007;'}</span>`).join('')
+    : '<span class="citation-tag">No citations</span>';
+
+  // Evidence Panel
+  const sources = data.sources || [];
+  evidenceGrid.innerHTML = sources.length
+    ? sources.map((s, i) => evidenceCard(i + 1, s)).join('')
+    : '<div style="color:var(--muted);font-size:13px">No evidence retrieved.</div>';
+
+  // Hide sections for refusal-type responses
+  document.getElementById('metricsSection').className = 'section';
+  document.getElementById('citationsSection').className = 'section';
+  document.getElementById('evidenceSection').className = 'section';
+
+  resultsEl.className = '';
+}
+
+function showRefusal(data) {
+  const resultsEl = document.getElementById('results');
+  const answerText = document.getElementById('answerText');
+  const disclaimer = document.getElementById('disclaimer');
+
+  const reason = data.risk_assessment?.reason || 'unknown';
+  const reasonLabel = {
+    possible_emergency: 'Emergency Detected',
+    personal_medication_advice: 'Personal Dosing Request',
+    animal_or_pet_question: 'Out of Scope',
+    clearly_non_clinical: 'Out of Scope',
+    outside_asthma_scope: 'Out of Scope',
+    empty_query: 'Empty Query',
+  }[reason] || 'Refused';
+
+  const msg = data.answer || 'This query cannot be answered.';
+  answerText.innerHTML = `<div class="refusal-box"><h3>${esc(reasonLabel)}</h3><p>${esc(msg)}</p></div>`;
+  disclaimer.className = 'disclaimer hidden';
+
+  // Show evidence panel even for refusals (shows 0 chunks)
+  const evidenceGrid = document.getElementById('evidenceGrid');
+  const sources = data.sources || [];
+  evidenceGrid.innerHTML = sources.length
+    ? sources.map((s, i) => evidenceCard(i + 1, s)).join('')
+    : '<div style="color:var(--muted);font-size:13px">No evidence retrieved (query blocked before retrieval).</div>';
+
+  document.getElementById('metricsGrid').innerHTML = '';
+  document.getElementById('citationsList').innerHTML = '';
+  document.getElementById('metricsSection').className = 'hidden';
+  document.getElementById('citationsSection').className = 'hidden';
+  document.getElementById('evidenceSection').className = 'section';
+
+  resultsEl.className = '';
+}
+
+function metric(label, value, good) {
+  const cls = good === null ? '' : (good ? 'good' : 'bad');
+  return `<div class="metric"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`;
+}
+
+function evidenceCard(rank, s) {
+  const score = s.score;
+  const scoreCls = score >= 0.6 ? 'high' : score >= 0.3 ? 'mid' : 'low';
+  const text = (s.text || '').substring(0, 200);
+  return `<div class="evidence-card">
+    <div class="rank">#${rank}</div>
+    <div>
+      <div class="doc-name">${esc(s.document_name || s.file_name || 'Unknown')}</div>
+      <div class="meta">Page ${s.page_number || '?'}${s.section_title ? ' &middot; ' + esc(s.section_title) : ''}</div>
+      <div class="text">${esc(text)}</div>
+    </div>
+    <div class="score ${scoreCls}">${score != null ? score.toFixed(3) : '-'}</div>
+  </div>`;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
