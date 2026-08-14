@@ -1,0 +1,370 @@
+{
+  "risk_rules": [
+    {
+      "name": "emergency",
+      "risk_level": "refuse_redirect",
+      "reason": "possible_emergency",
+      "patterns": [
+        {
+          "terms": [
+            "cant breathe",
+            "can't breathe",
+            "cannot breathe",
+            "blue lips",
+            "blue face",
+            "severe attack",
+            "lifethreatening",
+            "life-threatening",
+            "life threatening",
+            "unconscious",
+            "collapsed",
+            "chest pain",
+            "emergency",
+            "call an ambulance",
+            "go to the er",
+            "urgent help",
+            "urgent care now",
+            "status asthmaticus",
+            "turning blue",
+            "turned blue",
+            "going blue",
+            "look blue",
+            "looks blue"
+          ]
+        },
+        {
+          "pattern": "\\b(lips|face|skin|fingertips)\\b.{0,30}\\b(blue|bluish|blue-ish)\\b"
+        },
+        {
+          "pattern": "\\b(blue|bluish|blue-ish)\\b.{0,30}\\b(lips|face|skin|fingertips)\\b"
+        },
+        {
+          "terms": [
+            "لا أستطيع التنفس",
+            "لا استطيع التنفس",
+            "شفاه زرقاء",
+            "نوبة شديدة",
+            "فقدان الوعي",
+            "ألم في الصدر",
+            "طوارئ",
+            "اتصل بالإسعاف",
+            "حالة طارئة"
+          ],
+          "boundary": false
+        }
+      ]
+    },
+    {
+      "name": "personal_dosing",
+      "risk_level": "refuse_redirect",
+      "reason": "personal_medication_advice",
+      "patterns": [
+        {
+          "terms": [
+            "what should i take",
+            "should i take",
+            "can i take",
+            "dose for me",
+            "dosage for me",
+            "prescribe",
+            "increase my dose",
+            "stop my medication"
+          ]
+        },
+        {
+          "terms": [
+            "ماذا يجب أن آخذ",
+            "هل يمكنني أن آخذ",
+            "الجرعة المناسبة لي",
+            "صف لي",
+            "زيادة جرعتي",
+            "أوقف دوائي"
+          ],
+          "boundary": false
+        }
+      ]
+    },
+    {
+      "name": "animal_or_pet",
+      "risk_level": "refuse_redirect",
+      "reason": "animal_or_pet_question",
+      "patterns": [
+        {
+          "terms": [
+            "dog",
+            "cat",
+            "pet",
+            "animal",
+            "horse",
+            "bird"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "clearly_non_clinical",
+      "risk_level": "refuse_redirect",
+      "reason": "clearly_non_clinical",
+      "when_not": [
+        "asthma_scope",
+        "other_clinical_topic"
+      ],
+      "patterns": [
+        {
+          "terms": [
+            "python",
+            "javascript",
+            "typescript",
+            "java",
+            "c++",
+            "golang",
+            "rust",
+            "ruby",
+            "php",
+            "sql",
+            "html",
+            "css",
+            "kotlin",
+            "swift",
+            "regex",
+            "algorithm",
+            "function",
+            "code",
+            "script",
+            "snippet",
+            "programming",
+            "program",
+            "compile",
+            "debugger",
+            "syntax",
+            "weather",
+            "forecast",
+            "recipe",
+            "cooking",
+            "bake",
+            "cookbook",
+            "translate",
+            "translation",
+            "dictionary",
+            "pronounce",
+            "language learning",
+            "equation",
+            "calculus",
+            "algebra",
+            "math problem",
+            "homework"
+          ]
+        },
+        {
+          "pattern": "\\bsort\\s+.*list\\b"
+        }
+      ]
+    },
+    {
+      "name": "personal_symptom",
+      "risk_level": "needs_caution",
+      "reason": "patient_specific_scenario",
+      "auxiliary": "_is_personal_symptom_query"
+    },
+    {
+      "name": "outside_asthma_scope",
+      "risk_level": "refuse_redirect",
+      "reason": "outside_asthma_scope",
+      "require": [
+        "other_clinical_topic"
+      ],
+      "when_not": [
+        "asthma_scope"
+      ]
+    },
+    {
+      "name": "in_scope",
+      "risk_level": "allowed",
+      "reason": "within_asthma_guideline_scope",
+      "require": [
+        "asthma_scope"
+      ]
+    },
+    {
+      "name": "defer_to_retrieval",
+      "risk_level": "allowed",
+      "reason": "scope_undetermined_deferring_to_retrieval"
+    }
+  ],
+  "patterns": {
+    "asthma_scope": {
+      "patterns": [
+        {
+          "terms": [
+            "asthma",
+            "wheeze",
+            "wheezing",
+            "inhaler",
+            "ics",
+            "saba",
+            "laba",
+            "mart",
+            "air therapy",
+            "bronchodilator",
+            "spirometry",
+            "fev1",
+            "peak flow",
+            "exacerbation",
+            "controller",
+            "reliever",
+            "action plan",
+            "corticosteroid",
+            "formoterol",
+            "budesonide",
+            "bronchospasm",
+            "exercise-induced"
+          ]
+        },
+        {
+          "terms": [
+            "الربو",
+            "أزيز",
+            "جهاز الاستنشاق",
+            "ضيق التنفس",
+            "منظار التنفس"
+          ],
+          "boundary": false
+        }
+      ]
+    },
+    "other_clinical_topic": {
+      "patterns": [
+        {
+          "terms": [
+            "diabetes",
+            "hypertension",
+            "blood pressure",
+            "cancer",
+            "oncology",
+            "stroke",
+            "heart attack",
+            "kidney",
+            "pregnancy",
+            "antibiotic",
+            "infection",
+            "covid",
+            "flu",
+            "copd",
+            "pneumonia",
+            "bronchitis",
+            "dog",
+            "cat",
+            "pet"
+          ]
+        }
+      ]
+    },
+    "person_ref": {
+      "patterns": [
+        {
+          "pattern": "\\b(my|our)\\s+(son|daughter|child|baby|kid|children|wife|husband|mother|father|friend|relative|family|patient|\\d{1,2}\\s*-?\\s*year\\s*-?\\s*old)\\b"
+        }
+      ]
+    },
+    "first_person": {
+      "patterns": [
+        {
+          "terms": [
+            "i",
+            "me"
+          ]
+        }
+      ]
+    },
+    "strong_symptom": {
+      "patterns": [
+        {
+          "terms": [
+            "cough",
+            "coughing",
+            "wheeze",
+            "wheezing",
+            "breathless",
+            "short of breath",
+            "fever",
+            "pain",
+            "symptom"
+          ]
+        },
+        {
+          "pattern": "\\bshort\\s+of\\s+breath\\b"
+        },
+        {
+          "pattern": "\\bsuffer\\w*\\b"
+        }
+      ]
+    },
+    "health_topic": {
+      "patterns": [
+        {
+          "terms": [
+            "cough",
+            "coughing",
+            "wheeze",
+            "wheezing",
+            "breathless",
+            "short of breath",
+            "fever",
+            "pain",
+            "symptom",
+            "asthma",
+            "inhaler",
+            "medicine",
+            "medication"
+          ]
+        },
+        {
+          "pattern": "\\bshort\\s+of\\s+breath\\b"
+        },
+        {
+          "pattern": "\\bsuffer\\w*\\b"
+        },
+        {
+          "pattern": "\\bdiagnos\\w*\\b"
+        }
+      ]
+    }
+  },
+  "refusals": {
+    "possible_emergency": "This may be urgent. I cannot provide emergency care instructions here. Please seek emergency medical help immediately or contact local emergency services.",
+    "personal_medication_advice": "I cannot tell you what medication or dose to take for a specific person. Please consult a qualified healthcare professional. I can answer general questions about the indexed asthma guidelines.",
+    "outside_asthma_scope": "This question is outside the indexed asthma guideline scope. I can only answer using the official asthma guideline documents available in this project.",
+    "animal_or_pet_question": "This question is outside the indexed human asthma guideline scope. Please consult a qualified veterinarian or relevant professional.",
+    "clearly_non_clinical": "This question is outside the indexed asthma guideline scope. I can only answer clinical questions that are supported by the official asthma guideline documents.",
+    "insufficient_official_evidence": "I do not have enough official guideline evidence to answer this safely. Please consult a qualified healthcare professional or ask a question within the indexed asthma guideline scope."
+  },
+  "refusal_default": "I can only answer clinical questions that are within the indexed asthma guideline scope and supported by retrieved evidence.",
+  "org_aliases": {
+    "nice": [
+      "nice",
+      "ng80",
+      "bts"
+    ],
+    "gina": [
+      "gina",
+      "ginasthma"
+    ],
+    "nhlbi": [
+      "nhlbi",
+      "naepp",
+      "epr4",
+      "epr-4"
+    ],
+    "who": [
+      "who",
+      "who.int"
+    ],
+    "cdc": [
+      "cdc",
+      "cdc.gov"
+    ],
+    "uspstf": [
+      "uspstf"
+    ]
+  }
+}
