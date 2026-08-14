@@ -1,4 +1,4 @@
-from fastapi import APIRouter,FastAPI,Depends,UploadFile,status,Request
+from fastapi import APIRouter,FastAPI,Depends,UploadFile,status,Request,Form
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings,Settings
 from controllers import DataController,ProjectController,ProcessController
@@ -15,6 +15,7 @@ import os
 import aiofiles
 import json
 import logging
+from typing import Optional
 
 logger=logging.getLogger("uvicorn.error")
 
@@ -29,7 +30,9 @@ async def upload_data(
     request:Request,
     project_id:int,
     file:UploadFile,
-    
+    document_name: Optional[str] = Form(None),
+    source_url: Optional[str] = Form(None),
+    org: Optional[str] = Form(None),
     app_settings:Settings =Depends(get_settings)):
     
     project_model=await ProjectModel.create_instance(
@@ -79,12 +82,21 @@ async def upload_data(
         
         
     asset_model=await AssetModel.create_instance(db_client=request.app.db_client)
-    
+
+    asset_config = {}
+    if document_name:
+        asset_config["document_name"] = document_name
+    if source_url:
+        asset_config["source_url"] = source_url
+    if org:
+        asset_config["org"] = org
+
     asset_resource=Asset(
         asset_project_id=project.project_id,
         asset_name=file_id,
         asset_type=AssetTypeEnum.FILE.value,
         asset_size=str(os.path.getsize(file_path)),
+        asset_config=asset_config or None,
     )
     
     asset_record= await asset_model.create_asset(asset=asset_resource)
@@ -107,6 +119,7 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
     chunk_size=process_request.chunck_size
     overlap_size=process_request.overlap_size
     do_reset=process_request.do_reset
+    app_settings=get_settings()
     
     project_model=await ProjectModel.create_instance(
         db_client=request.app.db_client
@@ -118,13 +131,15 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser
+        template_parser=request.app.template_parser,
+        rerank_client=request.app.rerank_client
     )
     
     
     asset_model=await AssetModel.create_instance(db_client=request.app.db_client)
 
     project_file_ids={}
+    asset_configs={}
     
     if process_request.file_id:
         asset_record = await asset_model.get_asset_record(
@@ -143,6 +158,9 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
             asset_record.asset_id: asset_record.asset_name
             
         }
+        asset_configs={
+            asset_record.asset_id: asset_record.asset_config or {}
+        }
         
             
         # project_file_ids=[process_request.file_id]
@@ -155,6 +173,10 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
 )
         project_file_ids = {
     record.asset_id: record.asset_name
+    for record in project_files
+}
+        asset_configs = {
+    record.asset_id: record.asset_config or {}
     for record in project_files
 }
         
@@ -195,7 +217,7 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
             file_id=file_id,
             chunk_size=chunk_size,
             chunk_overlap=overlap_size,
-            method=process_request.chunking_method
+            method=process_request.chunking_method or app_settings.DEFAULT_CHUNKING_METHOD
             )
         
         if file_chunks is None or len(file_chunks)==0:
@@ -204,6 +226,17 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
                 content={"signal":Response.FILE_PROCESSING_FALIED}
                 )
             
+        asset_config = asset_configs.get(asset_id, {})
+        provenance = {
+            "document_name": asset_config.get("document_name")
+            or process_request.document_name
+            or file_id,
+            "source_url": asset_config.get("source_url")
+            or process_request.source_url
+            or "",
+            "org": asset_config.get("org") or process_request.org or "",
+        }
+
         file_chunks_records = [
             DataChunk(
                 chunk_text=chunk.page_content,
@@ -213,6 +246,7 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
                     "file_name": file_id,
                     "project_id": project.project_id,
                     "chunk_order": i+1,
+                    **provenance,
                 }),
                 chunk_order=i+1,
                 chunk_project_id=project.project_id,

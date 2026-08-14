@@ -1,4 +1,4 @@
-from sqlalchemy import func, select ,delete
+from sqlalchemy import func, select ,delete, text
 
 from .BaseDataModel import BaseDataModel
 from .db_schemas import DataChunk
@@ -45,6 +45,10 @@ class ChunkModel(BaseDataModel):
         async with self.db_client() as session:
             delete_query=delete(DataChunk).where(DataChunk.chunk_project_id==project_id)
             result=await session.execute(delete_query)
+            await session.execute(text(
+                "SELECT setval(pg_get_serial_sequence('chunks', 'chunk_id'), "
+                "COALESCE((SELECT MAX(chunk_id) FROM chunks), 0) + 1, false)"
+            ))
             await session.commit()
         return result.rowcount
     

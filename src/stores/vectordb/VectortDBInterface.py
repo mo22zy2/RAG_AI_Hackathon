@@ -58,6 +58,32 @@ class VectorDBInterface(ABC):
                          score_threshold:float=None,
                          metadata_filter:dict=None)->List[RetrivedDocument]:
         pass
+
+    def search_by_keyword(self, collection_name: str,
+                          query: str,
+                          limit: int,
+                          metadata_filter: dict = None,
+                          ts_config: str = "english") -> List[RetrivedDocument]:
+        """
+        Keyword (BM25-style ts_rank) search. Implemented by providers that
+        support full-text search (e.g. PGVector). Providers without support
+        raise NotImplementedError.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support keyword search")
+
+    def search_hybrid(self, collection_name: str,
+                      vector: list,
+                      query: str,
+                      limit: int,
+                      metadata_filter: dict = None,
+                      rrf_k: int = 60,
+                      ts_config: str = "english") -> List[RetrivedDocument]:
+        """
+        Hybrid search combining vector similarity and keyword search
+        (e.g. Reciprocal Rank Fusion). Providers without support raise
+        NotImplementedError.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support hybrid search")
     
     
     

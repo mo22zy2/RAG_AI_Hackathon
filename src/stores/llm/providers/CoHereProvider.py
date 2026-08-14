@@ -35,15 +35,15 @@ class CoHereProvider(LLMInterface):
         self.embedding_size = embedding_size
         
         
-    def process_text(self,text:str):
-            
-            if len(text) > self.default_max_input_chars:
-               
-                self.logger.warning(f"Input text exceeds the maximum allowed characters ({self.default_max_input_chars}). It will be truncated.")
-                
-                text = text[:self.default_max_input_chars].strip()  # Truncate and remove leading/trailing whitespace
-            
-            return text        
+    def process_text(self, text: str):
+        if len(text) > self.default_max_input_chars:
+            self.logger.warning(
+                f"[UNEXPECTED] Input text exceeds max chars ({self.default_max_input_chars}) "
+                f"even after document-selection budgeting. This should be rare — investigate "
+                f"if it recurs. Truncating {len(text)} -> {self.default_max_input_chars} chars."
+            )
+            text = text[:self.default_max_input_chars].strip()
+        return text        
 
     
     def generate_text(self, prompt: str,
@@ -122,3 +122,5 @@ class CoHereProvider(LLMInterface):
                 "role": role,
                 "text": prompt
             }
+            
+            

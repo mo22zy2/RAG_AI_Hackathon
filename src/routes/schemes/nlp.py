@@ -12,4 +12,11 @@ class SearchRequest(BaseModel):
     score_threshold: Optional[float] = None
     metadata_filter: Optional[dict] = None
     include_sources: Optional[bool] = True
-    retrieval_mode: Optional[str] = "vector"
+    # "vector" | "keyword" | "hybrid"
+    retrieval_mode: Optional[str] = "hybrid"
+    # Post-retrieval rerank. None = auto (enabled for /answer, disabled for /search)
+    rerank: Optional[bool] = None
+    # Expand asthma abbreviations/synonyms before retrieval.
+    expand_query: Optional[bool] = None
+    # Run deterministic citation and claim-support checks on generated answers.
+    verify_claims: Optional[bool] = True

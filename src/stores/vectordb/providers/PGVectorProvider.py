@@ -157,6 +157,16 @@ class PGVectorProvider(VectorDBInterface):
                 {PgVectorTableSchemaEnums.VECTOR.value} VECTOR({embedding_size}),
                 {PgVectorTableSchemaEnums.METADATA.value} JSONB DEFAULT '{{}}',
                 {PgVectorTableSchemaEnums.CHUNK_ID.value} INTEGER,
+                {PgVectorTableSchemaEnums.TEXT_SEARCH.value} TSVECTOR
+                    GENERATED ALWAYS AS (
+                        to_tsvector(
+                            'english',
+                            text || ' ' ||
+                            COALESCE(metadata->>'document_name', '') || ' ' ||
+                            COALESCE(metadata->>'org', '') || ' ' ||
+                            COALESCE(metadata->>'file_name', '')
+                        )
+                    ) STORED,
                 FOREIGN KEY ({PgVectorTableSchemaEnums.CHUNK_ID.value})
                     REFERENCES chunks(chunk_id)
             )
@@ -165,6 +175,30 @@ class PGVectorProvider(VectorDBInterface):
         async with self.db_client() as session:
             async with session.begin():
                 await session.execute(create_sql)
+
+        await self.create_text_search_index(collection_name=collection_name)
+
+        return True
+
+    async def create_text_search_index(self, collection_name: str, ts_config: str = "english"):
+        collection_name = self._validate_collection_name(collection_name)
+        index_name = f"{collection_name}_text_search_idx"
+
+        async with self.db_client() as session:
+            async with session.begin():
+                check_sql = sql_text(
+                    "SELECT 1 FROM pg_indexes WHERE indexname = :index_name"
+                )
+                exists = await session.execute(
+                    check_sql, {"index_name": index_name}
+                )
+                if exists.scalar_one_or_none():
+                    return False
+                await session.execute(sql_text(
+                    f'CREATE INDEX {index_name} '
+                    f'ON "{collection_name}" '
+                    f'USING GIN ({PgVectorTableSchemaEnums.TEXT_SEARCH.value})'
+                ))
 
         return True
 
@@ -354,6 +388,38 @@ class PGVectorProvider(VectorDBInterface):
     # ------------------------------------------------------------------ #
     # search
     # ------------------------------------------------------------------ #
+    def _build_metadata_filter(self, metadata_filter):
+        """
+        Build SQL conditions + params that filter on JSONB metadata keys.
+        Returns (conditions, params) where `conditions` is a list of SQL
+        fragments (without the WHERE keyword) ready for AND-composition.
+        """
+        metadata_conditions = []
+        params = {}
+
+        if metadata_filter:
+            for idx, (key, value) in enumerate(metadata_filter.items()):
+                param_name = f"metadata_filter_{idx}"
+                metadata_conditions.append(
+                    f"{PgVectorTableSchemaEnums.METADATA.value}->>:metadata_key_{idx} = :{param_name}"
+                )
+                params[f"metadata_key_{idx}"] = key
+                params[param_name] = str(value)
+
+        return metadata_conditions, params
+
+    @staticmethod
+    def _to_retrived_documents(records):
+        return [
+            RetrivedDocument(
+                text=record.text,
+                score=record.score,
+                chunk_id=record.chunk_id,
+                metadata=json.loads(record.metadata or "{}") if isinstance(record.metadata, str) else record.metadata or {}
+            )
+            for record in records
+        ]
+
     async def search_by_vector(self, collection_name, vector, limit, score_threshold=None, metadata_filter=None):
         if not await self.is_collection_existed(collection_name):
             self.logger.error(f"Collection '{collection_name}' does not exist.")
@@ -364,20 +430,11 @@ class PGVectorProvider(VectorDBInterface):
 
         vector = "[" + ",".join(map(str, vector)) + "]"
         score_filter = "WHERE score >= :score_threshold" if score_threshold is not None else ""
-        metadata_conditions = []
-        params = {"vector": vector, "limit": limit}
+        metadata_conditions, params = self._build_metadata_filter(metadata_filter)
+        params.update({"vector": vector, "limit": limit})
 
         if score_threshold is not None:
             params["score_threshold"] = score_threshold
-
-        if metadata_filter:
-            for idx, (key, value) in enumerate(metadata_filter.items()):
-                param_name = f"metadata_filter_{idx}"
-                metadata_conditions.append(
-                    f"{PgVectorTableSchemaEnums.METADATA.value}->>:metadata_key_{idx} = :{param_name}"
-                )
-                params[f"metadata_key_{idx}"] = key
-                params[param_name] = str(value)
 
         metadata_filter_sql = ""
         if metadata_conditions:
@@ -405,12 +462,113 @@ class PGVectorProvider(VectorDBInterface):
                 )
                 records = results.fetchall()
 
-                return [
-                    RetrivedDocument(
-                        text=record.text,
-                        score=record.score,
-                        chunk_id=record.chunk_id,
-                        metadata=json.loads(record.metadata or "{}") if isinstance(record.metadata, str) else record.metadata or {}
+                return self._to_retrived_documents(records)
+
+    async def search_by_keyword(self, collection_name, query, limit, metadata_filter=None, ts_config="english"):
+        if not await self.is_collection_existed(collection_name):
+            self.logger.error(f"Collection '{collection_name}' does not exist.")
+            return False
+
+        collection_name = self._validate_collection_name(collection_name)
+        if not re.fullmatch(r"[a-z_0-9]+", ts_config):
+            raise ValueError(f"Invalid ts_config: {ts_config!r}")
+        metadata_conditions, params = self._build_metadata_filter(metadata_filter)
+        params.update({"query": query, "limit": limit})
+
+        and_filters = ""
+        if metadata_conditions:
+            and_filters = " AND " + " AND ".join(metadata_conditions)
+
+        async with self.db_client() as session:
+            async with session.begin():
+                search_sql = sql_text(f"""
+                    WITH q AS (
+                        SELECT to_tsquery('{ts_config}',
+                            COALESCE(array_to_string(
+                                tsvector_to_array(to_tsvector('{ts_config}', :query)),
+                                ' | '), '')) AS tq
                     )
-                    for record in records
-                ]
+                    SELECT * FROM (
+                        SELECT
+                            {PgVectorTableSchemaEnums.TEXT.value} AS text,
+                            {PgVectorTableSchemaEnums.METADATA.value} AS metadata,
+                            chunk_id,
+                            ts_rank(
+                                {PgVectorTableSchemaEnums.TEXT_SEARCH.value},
+                                q.tq
+                            ) AS score
+                        FROM "{collection_name}" CROSS JOIN q
+                        WHERE {PgVectorTableSchemaEnums.TEXT_SEARCH.value}
+                            @@ q.tq
+                        {and_filters}
+                    ) AS scored_results
+                    ORDER BY score DESC, chunk_id ASC
+                    LIMIT :limit
+                """)
+
+                results = await session.execute(search_sql, params)
+                records = results.fetchall()
+
+                return self._to_retrived_documents(records)
+
+    async def search_hybrid(self, collection_name, vector, query, limit, metadata_filter=None, rrf_k=60, ts_config="english"):
+        """
+        Hybrid search: run vector + keyword, merge via Reciprocal Rank
+        Fusion (RRF). Scores become RRF rank-scores, not raw similarities.
+        """
+        if not await self.is_collection_existed(collection_name):
+            self.logger.error(f"Collection '{collection_name}' does not exist.")
+            return False
+
+        collection_name = self._validate_collection_name(collection_name)
+        if not re.fullmatch(r"[a-z_0-9]+", ts_config):
+            raise ValueError(f"Invalid ts_config: {ts_config!r}")
+        candidate_k = max(limit * 3, 20)
+
+        vector_results = await self.search_by_vector(
+            collection_name=collection_name,
+            vector=vector,
+            limit=candidate_k,
+            metadata_filter=metadata_filter,
+        )
+        keyword_results = await self.search_by_keyword(
+            collection_name=collection_name,
+            query=query,
+            limit=candidate_k,
+            metadata_filter=metadata_filter,
+            ts_config=ts_config,
+        )
+
+        if not vector_results and not keyword_results:
+            return []
+
+        vector_results = vector_results or []
+        keyword_results = keyword_results or []
+
+        rrf_scores = {}
+        docs_by_id = {}
+
+        for rank, doc in enumerate(vector_results):
+            rrf_scores[doc.chunk_id] = rrf_scores.get(doc.chunk_id, 0.0) + 1.0 / (rrf_k + rank + 1)
+            docs_by_id[doc.chunk_id] = doc
+
+        for rank, doc in enumerate(keyword_results):
+            rrf_scores[doc.chunk_id] = rrf_scores.get(doc.chunk_id, 0.0) + 1.0 / (rrf_k + rank + 1)
+            if doc.chunk_id not in docs_by_id:
+                docs_by_id[doc.chunk_id] = doc
+
+        ranked = sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True)[:limit]
+
+        merged = []
+        for chunk_id, score in ranked:
+            doc = docs_by_id[chunk_id]
+            merged.append(
+                RetrivedDocument(
+                    text=doc.text,
+                    score=score,
+                    chunk_id=doc.chunk_id,
+                    metadata=doc.metadata,
+                )
+            )
+
+        return merged

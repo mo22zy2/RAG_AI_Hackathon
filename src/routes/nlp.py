@@ -42,7 +42,8 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser
+        template_parser=request.app.template_parser,
+        rerank_client=request.app.rerank_client
     )
 
     # Create collection if it does not exist
@@ -123,7 +124,8 @@ async def get_project_index_info(request: Request, project_id: int):
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser
+        template_parser=request.app.template_parser,
+        rerank_client=request.app.rerank_client
     )
 
     collection_info = await nlp_controller.get_vector_db_collection_info(project=project)
@@ -149,7 +151,8 @@ async def search_index_info(request: Request, project_id: int, search_request: S
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser
+        template_parser=request.app.template_parser,
+        rerank_client=request.app.rerank_client
     )
 
     results = await nlp_controller.search_vector_db_collection(
@@ -157,7 +160,10 @@ async def search_index_info(request: Request, project_id: int, search_request: S
         text=search_request.text,
         limit=search_request.limit,
         score_threshold=search_request.score_threshold,
-        metadata_filter=search_request.metadata_filter
+        metadata_filter=search_request.metadata_filter,
+        retrieval_mode=search_request.retrieval_mode,
+        rerank=bool(search_request.rerank),
+        expand_query=search_request.expand_query is True,
     )
 
     # Use `is None` rather than falsy check so a legitimate empty
@@ -173,6 +179,9 @@ async def search_index_info(request: Request, project_id: int, search_request: S
     return JSONResponse(
         content={
             "signal": Response.SEARCH_IN_VECTOR_DB_SUCCESS.value,
+            "query": search_request.text,
+            "expanded_query": nlp_controller.expand_query(search_request.text) if search_request.expand_query is True else search_request.text,
+            "query_expanded": search_request.expand_query is True,
             "results": results
         }
     )
@@ -191,17 +200,32 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser
+        template_parser=request.app.template_parser,
+        rerank_client=request.app.rerank_client
     )
 
-    answer, full_prompt, chat_history, sources = await nlp_controller.answer_rag_question(
+    use_rerank = search_request.rerank if search_request.rerank is not None else True
+    use_query_expansion = search_request.expand_query if search_request.expand_query is not None else True
+
+    answer, full_prompt, chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel = await nlp_controller.answer_rag_question(
         project=project,
         query=search_request.text,
         limit=search_request.limit,
         score_threshold=search_request.score_threshold,
         metadata_filter=search_request.metadata_filter,
-        include_sources=search_request.include_sources
+        include_sources=search_request.include_sources,
+        retrieval_mode=search_request.retrieval_mode,
+        rerank=use_rerank,
+        expand_query=use_query_expansion,
+        verify_claims=bool(search_request.verify_claims),
     )
+
+    pipeline_metadata = {
+        'retrieval_mode': search_request.retrieval_mode,
+        'rerank_enabled': use_rerank,
+        'query_expansion_enabled': use_query_expansion,
+        'verify_claims_enabled': bool(search_request.verify_claims),
+    }
 
     # `None` means the generation call itself failed.
     if answer is None:
@@ -220,6 +244,20 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
                 "signal": Response.RAG_NO_DOCUMENTS_FOUND.value,
                 'answer': '',
                 'sources': sources or [],
+                'risk_assessment': risk_assessment,
+                'confidence': confidence,
+                'confidence_summary': NLPController._build_confidence_summary(confidence),
+                'evidence_panel': evidence_panel,
+                'pipeline_metadata': pipeline_metadata,
+                'quality': quality,
+                'citations': quality.get("citations", []),
+                'unsupported_claims': quality.get("unsupported_claims", []),
+                'unsupported_claim_rate': quality.get("unsupported_claim_rate", 0.0),
+                'citation_faithfulness': quality.get("citation_faithfulness", 0.0),
+                'disclaimer': disclaimer,
+                'query': search_request.text,
+                'expanded_query': nlp_controller.expand_query(search_request.text) if use_query_expansion else search_request.text,
+                'query_expanded': use_query_expansion,
             }
         )
 
@@ -229,6 +267,22 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
             'answer': answer,
             'sources': sources,
             'full_prompt': full_prompt,
-            'chat_history': chat_history
+            'chat_history': chat_history,
+            'retrieval_mode': search_request.retrieval_mode,
+            'rerank': use_rerank,
+            'risk_assessment': risk_assessment,
+            'confidence': confidence,
+            'confidence_summary': NLPController._build_confidence_summary(confidence),
+            'evidence_panel': evidence_panel,
+            'pipeline_metadata': pipeline_metadata,
+            'quality': quality,
+            'citations': quality.get("citations", []),
+            'unsupported_claims': quality.get("unsupported_claims", []),
+            'unsupported_claim_rate': quality.get("unsupported_claim_rate", 0.0),
+            'citation_faithfulness': quality.get("citation_faithfulness", 0.0),
+            'disclaimer': disclaimer,
+            'query': search_request.text,
+            'expanded_query': nlp_controller.expand_query(search_request.text) if use_query_expansion else search_request.text,
+            'query_expanded': use_query_expansion,
         }
     )
