@@ -41,19 +41,24 @@ Full benchmark dashboard: `eval/benchmark_dashboard_FINAL_20260814.md`
 
 ## Architecture
 
-### Query Pipeline
-
-```
-User Query
-  → Risk Classifier (refuse / caution / allow)
-  → Query Expansion (domain-specific synonyms)
-  → Hybrid Search (vector + BM25 + RRF fusion)
-  → Cohere Rerank v3.5 (cross-encoder)
-  → Confidence Gate (score + evidence threshold)
-  → Grounded LLM Prompt (Command-A-03-2025 via Ollama)
-  → Citation Verification (regex bracket-split)
-  → Claim Verification (unsupported-claim detector)
-  → Final Response + Evidence Panel
+```mermaid
+flowchart LR
+    Client["Client / API User"] --> API["FastAPI App"]
+    API --> Upload["Upload TXT/PDF"]
+    Upload --> Disk["Local File Storage"]
+    API --> Process["Process + Chunk"]
+    Process --> SQL["PostgreSQL Metadata"]
+    Process --> Chunks["Document Chunks"]
+    Chunks --> Embed["Embedding Provider (bge-m3)"]
+    Embed --> VectorDB["pgvector"]
+    API --> Search["Search: vector / keyword / hybrid / rerank"]
+    Search --> VectorDB
+    Search --> Rerank["Cohere Rerank v3.5"]
+    Rerank --> Confidence["Confidence Gate"]
+    Confidence --> Prompt["Prompt Builder"]
+    Prompt --> LLM["Generation Provider (Command-A)"]
+    LLM --> Verify["Citation + Claim Verification"]
+    Verify --> Answer["Grounded Answer + Evidence Panel"]
 ```
 
 ### Safety Layers
@@ -302,7 +307,7 @@ RAG_AI_Hackathon/
 - `EMBEDDING_MODEL_SIZE` must match the embedding model; changing it orphans existing collections.
 - Intentional typos kept for API compatibility: `requirments.txt`, `ProccesController`, `chunck_size`.
 - `do_reset=1` on process/index wipes that project's vector collection and chunks.
-- CORS allows only `http://localhost:8080` and `POST` — adjust in `main.py` for other ports.
+- CORS allows any `localhost` port (regex-based). Frontend served from any port works.
 - `src/.env` changes require a manual server restart (code changes auto-reload).
 
 ## License
