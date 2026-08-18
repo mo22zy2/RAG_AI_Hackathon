@@ -305,7 +305,7 @@ RAG_AI_Hackathon/
 
 - `src/.env` is gitignored; the app will not start without it.
 - `EMBEDDING_MODEL_SIZE` must match the embedding model; changing it orphans existing collections.
-- Intentional typos kept for API compatibility: `requirments.txt`, `ProccesController`, `chunck_size`.
+- Intentional typos kept for API compatibility: `requirments.txt`, `ProccesController`, `chunk_size`.
 - `do_reset=1` on process/index wipes that project's vector collection and chunks.
 - CORS allows any `localhost` port (regex-based). Frontend served from any port works.
 - `src/.env` changes require a manual server restart (code changes auto-reload).

@@ -3,8 +3,8 @@ from typing import Optional
 
 class ProccessRequest(BaseModel):
     file_id:str=None
-    chunck_size:Optional[int]=100
-    overlap_size:Optional[int]=20
+    chunk_size:Optional[int]=100
+    overlap_size:Optional[int]=50
     do_reset:Optional[int]=0
     chunking_method: Optional[str] = None
     # Provenance fallback, applied when the asset has no asset_config

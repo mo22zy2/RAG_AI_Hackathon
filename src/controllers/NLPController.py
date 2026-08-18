@@ -57,7 +57,7 @@ class NLPController(BaseController):
 
         vectors=[]
         for i in range(0, len(texts), settings.EMBEDDING_BATCH_SIZE):
-            batch_vectors=self.embedding_client.embed_text(
+            batch_vectors=await self.embedding_client.embed_text(
                 text=texts[i:i + settings.EMBEDDING_BATCH_SIZE],
                 document_type=DocumentType.DOCUMENT.value
             )
@@ -111,7 +111,7 @@ class NLPController(BaseController):
         # expanded query for richer semantic context.
         raw_query = text
 
-        vectors = self.embedding_client.embed_text(
+        vectors = await self.embedding_client.embed_text(
             text=expanded_query,
             document_type=DocumentType.QUERY.value
         )
@@ -166,7 +166,7 @@ class NLPController(BaseController):
                 fallback_results=results,
             )
 
-            reranked = self.rerank_client.rerank(
+            reranked = await self.rerank_client.rerank(
                 query=expanded_query,
                 documents=candidates or results,
                 top_n=rerank_limit,
@@ -280,7 +280,7 @@ class NLPController(BaseController):
             footer_prompt,
         ])
             
-        answer=self.generation_client.generate_text(
+        answer=await self.generation_client.generate_text(
             prompt=full_prompt,
             chat_history=chat_history
         )
@@ -319,7 +319,7 @@ class NLPController(BaseController):
                     f"## User Question:\n{query}",
                     correction_footer,
                 ])
-                retry_answer = self.generation_client.generate_text(
+                retry_answer = await self.generation_client.generate_text(
                     prompt=full_prompt,
                     chat_history=chat_history
                 )
@@ -478,6 +478,22 @@ class NLPController(BaseController):
         has_topic = bool(health_topic.search(text))
 
         return (has_person and has_topic) or (has_first and has_strong)
+
+    _ANIMAL_TERMS = ("dog", "cat", "pet", "animal", "horse", "bird")
+
+    def _is_animal_patient_query(self, query: str) -> bool:
+        """True when the query asks about an animal's own health (animal as
+        patient), e.g. 'My cat is wheezing'.  Returns False for questions
+        where the animal is an allergen/trigger context, e.g. 'Can pet
+        dander trigger asthma?' — those are in-scope clinical questions."""
+        text = (query or "").lower()
+        has_animal = any(
+            re.search(r"\b" + term + r"\b", text) for term in self._ANIMAL_TERMS
+        )
+        if not has_animal:
+            return False
+        possessives = ("my ", "our ", "his ", "her ")
+        return any(p + a in text for p in possessives for a in self._ANIMAL_TERMS)
 
     _compiled_cache = {}
 

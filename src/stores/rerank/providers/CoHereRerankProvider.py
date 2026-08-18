@@ -12,9 +12,10 @@ class CoHereRerankProvider(RerankProviderInterface):
         self.api_key = api_key
         self.model_id = model_id
         self.logger = logging.getLogger(__name__)
-        self.client = cohere.Client(self.api_key) if api_key else None
+        # AsyncClient so a rerank call doesn't block the event loop.
+        self.client = cohere.AsyncClient(self.api_key, timeout=240) if api_key else None
 
-    def rerank(self, query: str, documents: List[RetrivedDocument], top_n: int = None) -> List[RetrivedDocument]:
+    async def rerank(self, query: str, documents: List[RetrivedDocument], top_n: int = None) -> List[RetrivedDocument]:
         if not self.client:
             self.logger.error("Cohere rerank client is not initialized.")
             return documents
@@ -26,7 +27,7 @@ class CoHereRerankProvider(RerankProviderInterface):
         top_n = top_n or len(texts)
 
         try:
-            response = self.client.rerank(
+            response = await self.client.rerank(
                 model=self.model_id,
                 query=query,
                 documents=texts,

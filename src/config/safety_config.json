@@ -88,6 +88,7 @@
       "name": "animal_or_pet",
       "risk_level": "refuse_redirect",
       "reason": "animal_or_pet_question",
+      "auxiliary": "_is_animal_patient_query",
       "patterns": [
         {
           "terms": [

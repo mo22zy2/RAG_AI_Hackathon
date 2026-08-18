@@ -13,15 +13,15 @@ class LLMInterface(ABC):
         pass
     
     @abstractmethod
-    def generate_text(self, prompt:str,
+    async def generate_text(self, prompt:str,
                       chat_history:list=None,
                       max_output_tokens:int=None,
                       temperature:float=0.8):
         pass
-    
-    
+
+
     @abstractmethod
-    def embed_text(self,text:str,document_type:str=None):
+    async def embed_text(self,text:str,document_type:str=None):
         pass
     
     
