@@ -11,6 +11,7 @@ from stores.templates.template_parser import Template_Parser
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine,AsyncSession
 from sqlalchemy.orm import sessionmaker
+from utils.metrices import setup_metrics
 
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -62,6 +63,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+setup_metrics(app)
 
 
 app.add_middleware(
