@@ -186,10 +186,13 @@ class NLPController(BaseController):
                                   rerank:bool=True,
                                   rerank_top_k:int=None,
                                   expand_query:bool=True,
-                                  verify_claims:bool=True):
-        
+                                  verify_claims:bool=True,
+                                  conversation_history:list=None):
+
         answer , full_prompt , chat_history=None,None,None
         settings=get_settings()
+        conversation_block=self._build_conversation_block(conversation_history)
+        retrieval_query=self._build_retrieval_query(query, conversation_history)
         risk_assessment=self.classify_input_risk(query)
         refusal_answer=self._build_refusal_answer(risk_assessment)
         disclaimer=self._clinical_disclaimer()
@@ -204,7 +207,7 @@ class NLPController(BaseController):
         
         retrived_document= await self.search_vector_db_collection(
             project=project,
-            text=query,
+            text=retrieval_query,
             limit=max(limit, settings.RETRIEVAL_TOP_K),
             score_threshold=score_threshold if score_threshold is not None else settings.RETRIEVAL_SCORE_THRESHOLD,
             metadata_filter=metadata_filter,
@@ -225,7 +228,7 @@ class NLPController(BaseController):
         system_prompt=self.template_parser.get("rag","system_prompt")
         
         
-        reserved_chars = FOOTER_RESERVE_CHARS + len(query) + 50
+        reserved_chars = FOOTER_RESERVE_CHARS + len(query) + len(conversation_block) + 50
         selected_documents=self._select_documents_for_prompt(
             retrived_document=retrived_document,
             max_documents=limit or settings.ANSWER_TOP_K,
@@ -274,12 +277,13 @@ class NLPController(BaseController):
                         )
                     ]
 
-        full_prompt = "\n\n".join([
+        full_prompt = "\n\n".join(filter(None, [
             documnets_prompts,
+            conversation_block,
             f"## User Question:\n{query}",
             footer_prompt,
-        ])
-            
+        ]))
+
         answer=await self.generation_client.generate_text(
             prompt=full_prompt,
             chat_history=chat_history
@@ -314,11 +318,12 @@ class NLPController(BaseController):
                         role=self.generation_client.enums.SYSTEM.value,
                     )
                 ]
-                full_prompt = "\n\n".join([
+                full_prompt = "\n\n".join(filter(None, [
                     documnets_prompts,
+                    conversation_block,
                     f"## User Question:\n{query}",
                     correction_footer,
-                ])
+                ]))
                 retry_answer = await self.generation_client.generate_text(
                     prompt=full_prompt,
                     chat_history=chat_history
@@ -336,6 +341,49 @@ class NLPController(BaseController):
 
         evidence_panel = self.build_evidence_panel(retrived_document, selected_documents)
         return answer , full_prompt , chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel
+
+    CONVERSATION_CONTEXT_TURNS = 3
+    CONVERSATION_ANSWER_CHARS = 400
+
+    def _recent_conversation_turns(self, conversation_history: list):
+        if not conversation_history:
+            return []
+        return [
+            turn for turn in conversation_history[-self.CONVERSATION_CONTEXT_TURNS:]
+            if (turn.get("question") or "").strip()
+        ]
+
+    def _build_retrieval_query(self, query: str, conversation_history: list):
+        """Follow-up questions ("what about someone older?") carry no topic
+        of their own, so prior turns are folded into the retrieval text —
+        otherwise the vector/keyword search has nothing asthma-related to
+        match against."""
+        turns = self._recent_conversation_turns(conversation_history)
+        if not turns:
+            return query
+
+        context = " ".join((turn.get("question") or "").strip() for turn in turns)
+        return f"{context} {query}".strip()
+
+    def _build_conversation_block(self, conversation_history: list):
+        turns = self._recent_conversation_turns(conversation_history)
+        if not turns:
+            return ""
+
+        lines = ["## Conversation so far (for context on follow-up questions):"]
+        for turn in turns:
+            question = (turn.get("question") or "").strip()
+            answer = (turn.get("answer") or "").strip()
+            lines.append(f"User: {question}")
+            if answer:
+                lines.append(f"Assistant: {answer[:self.CONVERSATION_ANSWER_CHARS]}")
+        lines.append(
+            "The user's new question below may be a follow-up referring back to this "
+            "conversation (e.g. a pronoun, an age group, or an implied topic) — resolve "
+            "that reference using the conversation above, then answer strictly from the "
+            "documents."
+        )
+        return "\n".join(lines)
 
     def _parse_chunk_metadata(self, metadata):
         if not metadata:

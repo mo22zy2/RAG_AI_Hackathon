@@ -207,6 +207,8 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
     use_rerank = search_request.rerank if search_request.rerank is not None else True
     use_query_expansion = search_request.expand_query if search_request.expand_query is not None else True
 
+    conversation_history = [turn.model_dump() for turn in (search_request.conversation_history or [])]
+
     answer, full_prompt, chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel = await nlp_controller.answer_rag_question(
         project=project,
         query=search_request.text,
@@ -218,6 +220,7 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
         rerank=use_rerank,
         expand_query=use_query_expansion,
         verify_claims=bool(search_request.verify_claims),
+        conversation_history=conversation_history,
     )
 
     pipeline_metadata = {

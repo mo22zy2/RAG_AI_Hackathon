@@ -1,13 +1,13 @@
 # Final Hackathon Report
 
-**Project:** Mini RAG — Evidence-Grounded Asthma Guidance
+**Project:** BreathX RAG — Evidence-Grounded Asthma Guidance
 **Date:** 2026-08-16 — 2026-08-20 (AI Hackathon)
 **Frozen baseline:** 2026-08-14 (bge-m3, query expansion, golden fixes, citation split fix)
 **Dataset:** 22 golden-labeled retrieval questions (20 in-scope + 2 true-negative) × 4 modes × 3 Top-K, plus 30 answer cases (15 categories)
 
 ## Executive Summary
 
-Mini RAG is a clinical Retrieval-Augmented Generation system for asthma guidance. It ingests official public guideline PDFs (NICE NG80, GINA 2026 Strategy Report + Summary Guide, NHLBI/NAEPP EPR-4 QRG), preserves page-level provenance, retrieves evidence with hybrid search (vector + BM25 + RRF) and Cohere cross-encoder reranking, applies rule-based safety guardrails before generation, and returns cited answers with deterministic citation and claim-support verification.
+BreathX RAG is a clinical Retrieval-Augmented Generation system for asthma guidance. It ingests official public guideline PDFs (NICE NG80, GINA 2026 Strategy Report + Summary Guide, NHLBI/NAEPP EPR-4 QRG), preserves page-level provenance, retrieves evidence with hybrid search (vector + BM25 + RRF) and Cohere cross-encoder reranking, applies rule-based safety guardrails before generation, and returns cited answers with deterministic citation and claim-support verification.
 
 **Core philosophy:** Clinical decision support must be grounded in official evidence with explicit citations, transparent retrieval, and verified refusal logic. Fluent ≠ Safe.
 

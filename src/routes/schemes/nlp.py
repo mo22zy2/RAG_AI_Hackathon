@@ -1,14 +1,22 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 
 
 class PushRequest(BaseModel):
     do_reset: Optional[int]=0
 
 
+class ConversationTurn(BaseModel):
+    question: str
+    answer: Optional[str] = None
+
+
 class SearchRequest(BaseModel):
     text:str
     limit:Optional[int]=5
+    # Prior turns in this session, oldest first, so follow-up questions
+    # ("what about someone older?") can be understood in context.
+    conversation_history: Optional[List[ConversationTurn]] = None
     score_threshold: Optional[float] = None
     # Swagger UI auto-fills a bare `Optional[dict]` with a placeholder like
     # {"additionalProp1": {}} — an explicit null example stops that, since

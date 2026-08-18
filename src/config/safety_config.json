@@ -88,7 +88,9 @@
       "name": "animal_or_pet",
       "risk_level": "refuse_redirect",
       "reason": "animal_or_pet_question",
-      "auxiliary": "_is_animal_patient_query",
+      "when_not": [
+        "pet_as_asthma_trigger"
+      ],
       "patterns": [
         {
           "terms": [
@@ -230,6 +232,16 @@
             "منظار التنفس"
           ],
           "boundary": false
+        }
+      ]
+    },
+    "pet_as_asthma_trigger": {
+      "patterns": [
+        {
+          "pattern": "\\b(dander|allergen|allergens|allergy|allergies|trigger|triggers|triggered|triggering|exacerbat\\w*|flare[-\\s]?up|expos(?:ure|ed))\\b.{0,40}\\b(dog|dogs|cat|cats|pet|pets|animal|animals|horse|horses|bird|birds)\\b"
+        },
+        {
+          "pattern": "\\b(dog|dogs|cat|cats|pet|pets|animal|animals|horse|horses|bird|birds)\\b.{0,40}\\b(dander|allergen|allergens|allergy|allergies|trigger|triggers|triggered|triggering|exacerbat\\w*|flare[-\\s]?up|expos(?:ure|ed))\\b"
         }
       ]
     },

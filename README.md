@@ -1,4 +1,4 @@
-# Mini RAG — Clinical Asthma Q&A
+# BreathX RAG — Clinical Asthma Q&A
 
 <div align="center">
 
@@ -17,7 +17,7 @@
 
 ## Overview
 
-Mini RAG is a FastAPI RAG backend purpose-built for **clinical asthma questions**. It ingests guideline PDFs (GINA, NICE, NHLBI), chunks and embeds them into a pgvector store, and generates grounded, citation-backed answers to clinical questions — while refusing personal-symptom, out-of-scope, and emergency queries at the safety layer.
+BreathX RAG is a FastAPI RAG backend purpose-built for **clinical asthma questions**. It ingests guideline PDFs (GINA, NICE, NHLBI), chunks and embeds them into a pgvector store, and generates grounded, citation-backed answers to clinical questions — while refusing personal-symptom, out-of-scope, and emergency queries at the safety layer.
 
 The system is benchmarked against a 20-question golden-labeled retrieval set and a 30-case answer quality harness, with both automated eval scripts in the repo.
 
@@ -143,7 +143,7 @@ ANSWER_MIN_EVIDENCE_COUNT=1
 ### 4. Migrate
 
 ```bash
-cd models/db_schemas/mini_rag
+cd models/db_schemas/breathx_rag
 copy alembic.ini.example alembic.ini
 alembic upgrade head
 cd ../../..

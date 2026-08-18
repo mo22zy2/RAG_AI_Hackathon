@@ -24,7 +24,7 @@ docker/mongodb/
 Dataset/*.pdf
 
 # Alembic config (copied from example)
-src/models/db_schemas/mini_rag/alembic.ini
+src/models/db_schemas/breathx_rag/alembic.ini
 
 # Eval results (regenerated each run — source files are tracked)
 eval/results_*.md
@@ -34,13 +34,11 @@ eval/answer_rows_*.json
 eval/retrieval_rows_*.json
 eval/chunk_diagnostics_*.md
 eval/benchmark_dashboard_*.md
-src/config/safety_config.json
+src/models/db_schemas/mini_rag/alembic/env.py
+src/models/db_schemas/mini_rag/alembic.ini
 eval/clinical_questions.json
 eval/answer_cases.json
 Dataset/manifest.json
 Dataset/clinical_scope.md
 AGENTS.md
-src/config/safety_config.json
-src/tests/test_core.py
-src/config/safety_config.json
 2026-08-18-113643-now-fetch-all-the-code-files-to-see-what-needs-to.txt

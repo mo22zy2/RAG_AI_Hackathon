@@ -1,6 +1,6 @@
 from sqlalchemy import Index
 
-from .mini_rag_base import SQLAlchemyBase
+from .breathx_rag_base import SQLAlchemyBase
 from sqlalchemy import ForeignKey, String, Column,Integer,DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
