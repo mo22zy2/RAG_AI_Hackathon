@@ -114,7 +114,7 @@ def build_dashboard(retrieval_rows, answer_rows, elapsed, questions, cases, emb_
 
     lines.append("# Clinical RAG Benchmark Dashboard")
     lines.append(f"**Generated:** {ts}")
-    lines.append(f"**System:** mini-RAG | Asthma Guidelines | {emb_model} | {gen_model}")
+    lines.append(f"**System:** BreathX RAG | Asthma Guidelines | {emb_model} | {gen_model}")
     lines.append(f"**Dataset:** {questions_count} in-scope retrieval questions (+{tn_count} true-negative), {cases_count} answer cases")
     lines.append(f"**Total elapsed:** {elapsed:.1f}s")
     lines.append("")

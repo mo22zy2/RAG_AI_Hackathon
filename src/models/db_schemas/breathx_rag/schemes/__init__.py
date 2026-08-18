@@ -1,4 +1,4 @@
-from .mini_rag_base import SQLAlchemyBase
+from .breathx_rag_base import SQLAlchemyBase
 
 from .asset import Asset
 

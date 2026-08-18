@@ -10,11 +10,10 @@ motor==3.4.0
 openai==1.75.0
 cohere==5.5.8
 qdrant-client==1.10.1
-sqlalchemy
-asyncpg
+sqlalchemy==2.0.52
+asyncpg==0.31.0
 alembic==1.14
 psycopg2==2.9.10
-pgvector
-nltk
-tqdm
-pytest>=7.0
+pgvector==0.5.0
+tqdm==4.70.0
+pytest==9.1.1

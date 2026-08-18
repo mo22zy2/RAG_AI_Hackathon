@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = REPO_ROOT / "Dataset" / "manifest.json"
 DEFAULT_SOURCE_DIR = REPO_ROOT / "Dataset" / "source_pdfs"
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MiniRAG-Hackathon/1.0"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BreathXRAG-Hackathon/1.0"
 DOWNLOAD_TIMEOUT = 90
 MAX_RETRIES = 2
 PDF_MAGIC = b"%PDF-"

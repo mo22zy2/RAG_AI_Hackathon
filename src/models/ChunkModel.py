@@ -55,7 +55,7 @@ class ChunkModel(BaseDataModel):
     async def get_project_chunks(self, project_id:int,page_no: int=1,page_size:int=50):
        
         async with self.db_client()as session:
-            get_project_chunk_query=select(DataChunk).where(DataChunk.chunk_project_id==project_id).offset((page_no-1)*page_size).limit(page_size)
+            get_project_chunk_query=select(DataChunk).where(DataChunk.chunk_project_id==project_id).order_by(DataChunk.chunk_id).offset((page_no-1)*page_size).limit(page_size)
             result=await session.execute(get_project_chunk_query)
             record=result.scalars().all()
             

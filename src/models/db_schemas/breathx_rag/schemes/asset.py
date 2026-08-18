@@ -1,6 +1,6 @@
 from sqlalchemy import Index
 
-from .mini_rag_base import SQLAlchemyBase
+from .breathx_rag_base import SQLAlchemyBase
 from sqlalchemy import ForeignKey, String, Column,Integer,DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -30,6 +30,8 @@ class Asset(SQLAlchemyBase):
     __table_args__=(
         Index('ix_asset_project_id',asset_project_id),
         Index('ix_asset_type',asset_type),
+        # AssetModel.get_asset_record filters on this exact pair.
+        Index('ix_asset_project_id_asset_name',asset_project_id,asset_name),
     )
     
     created_at=Column(DateTime(timezone=True),server_default=func.now(),nullable=False)

@@ -42,7 +42,7 @@ async def upload_data(
     project= await project_model.get_project_or_create_one(project_id=project_id)
     
     data_controller=DataController()
-    isValid,response_signal = data_controller.validate_upload_file(file=file)
+    isValid,response_signal = await data_controller.validate_upload_file(file=file)
     
     if not isValid:
         return JSONResponse(
@@ -77,7 +77,7 @@ async def upload_data(
         logger.error(f"Error while uploading file : {e}")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"signal":Response.FILE_VALIDATED_FALIED}
+            content={"signal":Response.FILE_VALIDATED_FALIED.value}
         )
         
         
@@ -183,7 +183,7 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
     if len(project_file_ids)==0:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"signal":Response.NO_FILES_ERROR}
+            content={"signal":Response.NO_FILES_ERROR.value}
     )
     
     
@@ -223,7 +223,7 @@ async def process_endpoint(request:Request,project_id:int,process_request:Procce
         if file_chunks is None or len(file_chunks)==0:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={"signal":Response.FILE_PROCESSING_FALIED}
+                content={"signal":Response.FILE_PROCESSING_FALIED.value}
                 )
             
         asset_config = asset_configs.get(asset_id, {})

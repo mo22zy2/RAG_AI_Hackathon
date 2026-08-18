@@ -1,4 +1,4 @@
-from .mini_rag_base import SQLAlchemyBase
+from .breathx_rag_base import SQLAlchemyBase
 from sqlalchemy import Column,Integer,DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship

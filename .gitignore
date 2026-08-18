@@ -24,7 +24,7 @@ docker/mongodb/
 Dataset/*.pdf
 
 # Alembic config (copied from example)
-src/models/db_schemas/mini_rag/alembic.ini
+src/models/db_schemas/breathx_rag/alembic.ini
 
 # Eval results (regenerated each run — source files are tracked)
 eval/results_*.md

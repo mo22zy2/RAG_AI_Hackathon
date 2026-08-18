@@ -79,6 +79,17 @@ class TestSafetyClassifier:
         assert r["risk_level"] == "refuse_redirect"
         assert r["reason"] == "animal_or_pet_question"
 
+    def test_pet_allergen_trigger_is_in_scope(self):
+        # A pet mentioned as an asthma *trigger* is a legitimate, in-scope
+        # clinical question (guidelines cover allergen avoidance) — it
+        # should not be refused as an out-of-scope veterinary question.
+        r = self.ctrl.classify_input_risk("Can pet dander trigger an asthma exacerbation?")
+        assert r["risk_level"] == "allowed"
+
+    def test_dog_asthma_trigger_is_in_scope(self):
+        r = self.ctrl.classify_input_risk("Is dog hair a known asthma trigger?")
+        assert r["risk_level"] == "allowed"
+
     def test_programming_question(self):
         r = self.ctrl.classify_input_risk("Write me a Python function to sort a list.")
         assert r["risk_level"] == "refuse_redirect"
@@ -355,3 +366,78 @@ class TestAnswerQuality:
         q = self.ctrl.build_answer_quality(answer, sources, selected, verify_claims=True)
         assert q["citation_faithfulness"] >= 0.5
         assert q["unsupported_claim_rate"] == 0.0
+
+
+# ===================================================================
+# 7. Cohere embedding provider — query vs. document input_type
+# ===================================================================
+# Regression test for a confirmed bug: `document_type` was compared against
+# the DocumentType *Enum member* instead of its `.value`, so the branch was
+# always False and every embed call — including queries — used
+# input_type="search_document". Cohere's embed models are asymmetric, so
+# this silently degraded retrieval whenever EMBEDDING_BACKEND=COHERE.
+
+class TestCoHereEmbedInputType:
+
+    def _provider_with_fake_client(self):
+        from stores.llm.providers.CoHereProvider import CoHereProvider
+
+        provider = CoHereProvider(api_key="test-key")
+        provider.set_embedding_model(model_id="embed-test", embedding_size=4)
+
+        captured = {}
+
+        class _Embeddings:
+            float = [[0.1, 0.2, 0.3, 0.4]]
+
+        class _Response:
+            embeddings = _Embeddings()
+
+        async def fake_embed(**kwargs):
+            captured.update(kwargs)
+            return _Response()
+
+        provider.client = MagicMock()
+        provider.client.embed = fake_embed
+        return provider, captured
+
+    def test_query_document_type_uses_search_query(self):
+        import asyncio
+        from stores.llm.LLMEnums import DocumentType
+
+        provider, captured = self._provider_with_fake_client()
+        asyncio.run(provider.embed_text("what is asthma?", document_type=DocumentType.QUERY.value))
+        assert captured["input_type"] == "search_query"
+
+    def test_document_document_type_uses_search_document(self):
+        import asyncio
+        from stores.llm.LLMEnums import DocumentType
+
+        provider, captured = self._provider_with_fake_client()
+        asyncio.run(provider.embed_text("chunk text", document_type=DocumentType.DOCUMENT.value))
+        assert captured["input_type"] == "search_document"
+
+
+# ===================================================================
+# 8. PGVectorProvider — collection-name identifier validation
+# ===================================================================
+# Table/collection names can't be bound as SQL parameters, so PGVectorProvider
+# validates them against a strict regex before interpolating them into SQL.
+# This is the one identifier-interpolation path in the codebase; it's worth
+# a standing regression test.
+
+class TestPGVectorIdentifierValidation:
+
+    def test_accepts_valid_collection_name(self):
+        from stores.vectordb.providers.PGVectorProvider import PGVectorProvider
+        assert PGVectorProvider._validate_collection_name("collection_1024_1") == "collection_1024_1"
+
+    def test_rejects_sql_metacharacters(self):
+        from stores.vectordb.providers.PGVectorProvider import PGVectorProvider
+        with pytest.raises(ValueError):
+            PGVectorProvider._validate_collection_name("collection_1; DROP TABLE chunks;--")
+
+    def test_rejects_leading_digit(self):
+        from stores.vectordb.providers.PGVectorProvider import PGVectorProvider
+        with pytest.raises(ValueError):
+            PGVectorProvider._validate_collection_name("1_collection")
