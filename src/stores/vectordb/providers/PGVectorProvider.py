@@ -8,7 +8,7 @@ from ..VectorDBEnums import (
 from typing import List
 from models.db_schemas import RetrivedDocument
 from sqlalchemy.sql import text as sql_text
-import json, re
+import json, re, asyncio
 import logging
 
 
@@ -35,6 +35,7 @@ class PGVectorProvider(VectorDBInterface):
         self.logger = logging.getLogger("uvicorn")
         self.default_index_name=lambda collection_name : f'{collection_name}_vector_idx'
         self.index_threshold=index_threshold
+        self._collections_verified = set()
 
     # ------------------------------------------------------------------ #
     # helpers
@@ -68,6 +69,8 @@ class PGVectorProvider(VectorDBInterface):
     # collection introspection
     # ------------------------------------------------------------------ #
     async def is_collection_existed(self, collection_name: str) -> bool:
+        if collection_name in self._collections_verified:
+            return True
         async with self.db_client() as session:
             async with session.begin():
                 list_tbl = sql_text(
@@ -76,6 +79,8 @@ class PGVectorProvider(VectorDBInterface):
                 results = await session.execute(list_tbl, {"collection_name": collection_name})
                 record = results.first()
 
+        if record is not None:
+            self._collections_verified.add(collection_name)
         return record is not None
     
     async def list_all_collections(self) -> List:
@@ -525,18 +530,20 @@ class PGVectorProvider(VectorDBInterface):
             raise ValueError(f"Invalid ts_config: {ts_config!r}")
         candidate_k = max(limit * 3, 20)
 
-        vector_results = await self.search_by_vector(
-            collection_name=collection_name,
-            vector=vector,
-            limit=candidate_k,
-            metadata_filter=metadata_filter,
-        )
-        keyword_results = await self.search_by_keyword(
-            collection_name=collection_name,
-            query=query,
-            limit=candidate_k,
-            metadata_filter=metadata_filter,
-            ts_config=ts_config,
+        vector_results, keyword_results = await asyncio.gather(
+            self.search_by_vector(
+                collection_name=collection_name,
+                vector=vector,
+                limit=candidate_k,
+                metadata_filter=metadata_filter,
+            ),
+            self.search_by_keyword(
+                collection_name=collection_name,
+                query=query,
+                limit=candidate_k,
+                metadata_filter=metadata_filter,
+                ts_config=ts_config,
+            ),
         )
 
         if not vector_results and not keyword_results:

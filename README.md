@@ -8,8 +8,8 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL%20pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![Cohere](https://img.shields.io/badge/Reranker-Cohere%20v3.5-DC244C)](https://cohere.com/rerank)
-[![Ollama](https://img.shields.io/badge/LLM-Ollama-FF6B35)](https://ollama.com/)
-[![42 Tests](https://img.shields.io/badge/Tests-42%2F42-green)](#unit-tests)
+[![Cohere](https://img.shields.io/badge/LLM-Cohere%20Command%20A-DC244C)](https://cohere.com/)
+[![49 Tests](https://img.shields.io/badge/Tests-49%2F49-green)](#unit-tests)
 
 </div>
 
@@ -31,11 +31,25 @@ The system is benchmarked against a 20-question golden-labeled retrieval set and
 | Citation Faithfulness | **1.000** | ≥0.95 | ✅ |
 | Safety Classifier Accuracy | **1.000** | =1.00 | ✅ |
 | Unsupported Claim Rate | **0.000** | =0.00 | ✅ |
-| Unit Tests Passing | **42/42** | 100% | ✅ |
+| Language Fidelity (Arabic) | **1.000** | =1.00 | ✅ |
+| Unit Tests Passing | **49/49** | 100% | ✅ |
 | Precision@3 (rerank) | 0.333 | ≥0.40 | ⚠️ |
 | Precision@5 (rerank) | 0.260 | ≥0.30 | ⚠️ |
 
 Full benchmark dashboard: `eval/benchmark_dashboard_FINAL_20260814.md`
+
+### Performance Comparison (30-case answer eval)
+
+| | Before Optimization | After Optimization | Change |
+|---|---:|---:|---:|
+| **Total elapsed** | 375.9s | 281.8s | **−25%** |
+| **Avg per question** | 12.5s | 9.4s | **−3.1s** |
+| Safety accuracy | 0.967 | 1.000 | +0.033 |
+| Refusal accuracy | 0.967 | 1.000 | +0.033 |
+| Citation faithfulness | 0.953 | 1.000 | +0.047 |
+| Keyword hit rate | 0.900 | 1.000 | +0.100 |
+
+Optimizations: parallelized hybrid search sub-queries, parallelized rerank candidate building, cached settings/sources, pre-compiled regex patterns, eliminated redundant DB queries. Zero logic changes — same retrieval, rerank, and generation.
 
 ---
 
@@ -88,14 +102,14 @@ flowchart LR
 |---|---|
 | API | FastAPI + Uvicorn |
 | Database | PostgreSQL + pgvector (Docker) |
-| Embeddings | `bge-m3` (1024-dim) via Ollama |
+| Embeddings | `bge-m3` (1024-dim) via Cohere API |
 | Reranker | Cohere `rerank-v3.5` |
-| LLM | `command-a-03-2025` via Ollama |
+| LLM | `command-a-03-2025` via Cohere API |
 | Vector Store | pgvector (IVFFLAT index) |
 | Config | pydantic-settings, `.env` |
 | Migrations | Alembic |
 | Eval | Custom harnesses (`eval_retrieval_v2.py`, `eval_answers.py`) |
-| Tests | pytest (42 unit tests) |
+| Tests | pytest (49 unit tests) |
 
 ---
 
@@ -218,7 +232,7 @@ python scripts/audit_golden_labels.py
 pytest tests/test_core.py -v
 ```
 
-42 tests across 6 classes:
+49 tests across 6 classes:
 
 | Class | Tests | What it covers |
 |---|---|---|
@@ -256,6 +270,8 @@ RAG_AI_Hackathon/
 ├── scripts/
 │   ├── eval_retrieval_v2.py         # Retrieval eval harness
 │   ├── eval_answers.py              # Answer quality eval harness
+│   ├── DEMO_eval_retrieval.py       # Demo retrieval evaluation
+│   ├── DEMO_eval_answers.py         # Demo answer quality evaluation
 │   └── audit_golden_labels.py       # Golden label audit tool
 ├── src/
 │   ├── main.py
@@ -289,7 +305,7 @@ RAG_AI_Hackathon/
 |---|---|---|
 | `EMBEDDING_MODEL_ID` | `bge-m3` | Embedding model name |
 | `EMBEDDING_MODEL_SIZE` | `1024` | Vector dimension (must match model) |
-| `GENERATION_MODEL_ID` | `command-a-03-2025` | LLM via Ollama |
+| `GENERATION_MODEL_ID` | `command-a-03-2025` | LLM via Cohere API |
 | `VECTOR_DB_BACKEND` | `PGVECTOR` | Vector store backend |
 | `RETRIEVAL_TOP_K` | `25` | Pre-rerank candidate pool size |
 | `RERANK_TOP_K` | `20` | Post-rerank selection count |

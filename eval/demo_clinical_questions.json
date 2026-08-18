@@ -1,0 +1,89 @@
+{
+  "topic": "Asthma Guidance - Retrieval Demo 5",
+  "description": "Filtered 5-question demo subset chosen from strong-performing retrieval eval rows (see results_20260814_202757.md) — covers NICE, GINA, and NHLBI individually plus one multi-chunk cross-document question.",
+  "questions": [
+    {
+      "id": "q01",
+      "category": "diagnosis",
+      "question": "What objective test results confirm a diagnosis of asthma in adults with a history suggestive of asthma?",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 9,
+          "page_to": 10,
+          "keywords": ["50 ppb", "bronchodilator", "eosinophil", "fev1"]
+        }
+      ]
+    },
+    {
+      "id": "q09",
+      "category": "self-management",
+      "question": "Which non-pharmacologic strategies does GINA recommend for asthma management?",
+      "golden": [
+        {
+          "doc_hint": "gina",
+          "page_from": 20,
+          "page_to": 20,
+          "keywords": ["smoking cessation", "physical activity", "weight reduction", "vaccination"]
+        },
+        {
+          "doc_hint": "gina",
+          "page_from": 62,
+          "page_to": 66,
+          "keywords": ["smoking cessation", "physical activity", "weight reduction", "vaccination"]
+        }
+      ]
+    },
+    {
+      "id": "q14",
+      "category": "special-population",
+      "question": "What does the NHLBI quick reference recommend for preventing exercise-induced bronchospasm?",
+      "golden": [
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 4,
+          "page_to": 4,
+          "keywords": ["exercise", "saba", "ltra", "cromolyn", "before exercise"]
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "category": "self-management",
+      "question": "What are the key components of a written asthma action plan?",
+      "golden": [
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 3,
+          "page_to": 3,
+          "keywords": ["written asthma action plan", "daily actions", "adjust medications", "seek medical care"]
+        }
+      ]
+    },
+    {
+      "id": "q20",
+      "category": "multi-chunk",
+      "question": "Compare the recommendations for written asthma action plans across the guidelines.",
+      "golden": [
+        {
+          "doc_hint": "nice",
+          "page_from": 29,
+          "page_to": 29,
+          "keywords": ["personalised action plan", "annual reviews"]
+        },
+        {
+          "doc_hint": "gina",
+          "page_from": 20,
+          "page_to": 20,
+          "keywords": ["written asthma action plan", "monitor symptoms"]
+        },
+        {
+          "doc_hint": "nhlbi",
+          "page_from": 3,
+          "page_to": 3,
+          "keywords": ["written asthma action plan", "partnership with patient"]
+        }
+      ]
+    }
+  ]
+}

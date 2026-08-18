@@ -1,5 +1,5 @@
 from typing import List
-import re
+import re, asyncio
 
 from models.db_schemas import DataChunk
 from stores.llm.LLMEnums import DocumentType
@@ -23,6 +23,31 @@ class NLPController(BaseController):
         self.embedding_client=embedding_client
         self.template_parser=template_parser
         self.rerank_client=rerank_client
+        
+    _EXPAND_PATTERNS = [
+        (re.compile(r"\bmart\b|maintenance[-\s]?and[-\s]?reliever", re.I), "maintenance-and-reliever therapy ICS-formoterol budesonide formoterol as-needed single-inhaler combination"),
+        (re.compile(r"\bair\b|anti[-\s]?inflammatory reliever", re.I), "anti-inflammatory reliever low dose ICS-formoterol as-needed"),
+        (re.compile(r"\bics\b|inhaled corticosteroid", re.I), "inhaled corticosteroid controller preventer corticosteroid"),
+        (re.compile(r"\bsaba\b|short[-\s]?acting beta", re.I), "short-acting beta agonist reliever salbutamol albuterol SABA-only"),
+        (re.compile(r"\blaba\b|long[-\s]?acting beta", re.I), "long-acting beta agonist formoterol salmeterol"),
+        (re.compile(r"\baction plan\b|self[-\s]?management", re.I), "written asthma action plan personalised action plan monitor symptoms seek medical care"),
+        (re.compile(r"\bobesity\b|overweight|weight", re.I), "weight reduction 5-10% 5–10% improve asthma control obesity comorbidity"),
+        (re.compile(r"\binitial\b|newly diagnosed|first treatment", re.I), "initial pharmacological treatment low-dose ICS/formoterol as-needed AIR therapy"),
+        (re.compile(r"\bstep 1\b|step one", re.I), "Step 1 preferred treatment adults adolescents low dose ICS-formoterol"),
+        (re.compile(r"\bdiagnos", re.I), "confirm asthma diagnosis spirometry bronchodilator reversibility FeNO eosinophil variability"),
+        (re.compile(r"\bexercise\b|bronchospasm", re.I), "exercise-induced bronchospasm before exercise SABA LTRA cromolyn NHLBI"),
+        (re.compile(r"\bgina\b", re.I), "GINA 2026 Global Strategy for Asthma Management and Prevention GINA 2026 Summary Guide for Asthma Management and Prevention"),
+        (re.compile(r"\bnice\b|ng80|bts", re.I), "NICE Asthma: diagnosis monitoring and chronic asthma management NG80"),
+        (re.compile(r"\bnhlbi\b|naepp|epr4|epr[-\s]?4", re.I), "Asthma Quick Reference Guide 2020 NAEPP EPR-4 focused updates NHLBI"),
+        (re.compile(r"step[-\s]?down|stepped?\s+down|de-?escalat|reduc\w*\s+(treatment|therapy|dose)", re.I),
+        "stepping down maintenance therapy reduce controller dose de-escalation well-controlled asthma minimum effective treatment"),
+        (re.compile(r"non[-\s]?pharmacolog|smoking cessation|vaccination|immunisation|obesity|weight reduction", re.I),
+        "non-pharmacological strategies smoking cessation physical activity weight reduction vaccination obesity self-management GINA guideline recommendations"),
+        (re.compile(r"risk.*(exacerb|poor outcome|severe)|increased risk|identify.*risk|at risk", re.I),
+        "risk factors exacerbations severe exacerbation poor lung function FEV1 intubation past year emergency visit"),
+        (re.compile(r"preferred treatment|step.?1.*persistent|persistent.*step.?1", re.I),
+        "preferred treatment Step 1 persistent asthma low-dose ICS SABA as needed NHLBI stepwise approach"),
+    ]
         
         
     def create_collection_name(self,project_id:int):
@@ -193,6 +218,7 @@ class NLPController(BaseController):
         settings=get_settings()
         conversation_block=self._build_conversation_block(conversation_history)
         retrieval_query=self._build_retrieval_query(query, conversation_history)
+        expanded_query = self.expand_query(retrieval_query) if expand_query else retrieval_query
         risk_assessment=self.classify_input_risk(query)
         refusal_answer=self._build_refusal_answer(risk_assessment)
         disclaimer=self._clinical_disclaimer()
@@ -203,7 +229,7 @@ class NLPController(BaseController):
             confidence["reason"]="blocked_by_safety_classifier"
             quality=self.build_answer_quality(refusal_answer, [], [], verify_claims=False)
             evidence_panel = {"total_retrieved": 0, "total_selected": 0, "retrieval_coverage": {"documents": [], "unique_documents": 0, "page_range": {}}, "chunks": []}
-            return refusal_answer, None, None, [], risk_assessment, confidence, quality, disclaimer, evidence_panel
+            return refusal_answer, None, None, [], risk_assessment, confidence, quality, disclaimer, evidence_panel, expanded_query
         
         retrived_document= await self.search_vector_db_collection(
             project=project,
@@ -221,7 +247,7 @@ class NLPController(BaseController):
             confidence=self._build_confidence([], [], question=query)
             quality=self.build_answer_quality("", [], [], verify_claims=False)
             evidence_panel = {"total_retrieved": 0, "total_selected": 0, "retrieval_coverage": {"documents": [], "unique_documents": 0, "page_range": {}}, "chunks": []}
-            return "", None, None, [], risk_assessment, confidence, quality, disclaimer, evidence_panel
+            return "", None, None, [], risk_assessment, confidence, quality, disclaimer, evidence_panel, expanded_query
         
         
         
@@ -250,7 +276,7 @@ class NLPController(BaseController):
             sources=self._build_sources(selected_documents)
             quality=self.build_answer_quality(refusal, sources, selected_documents, verify_claims=False)
             evidence_panel = self.build_evidence_panel(retrived_document, selected_documents)
-            return refusal, None, None, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel
+            return refusal, None, None, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel, expanded_query
 
         documnets_prompts="\n".join([
                 self._render_document_prompt(idx, doc)
@@ -299,7 +325,7 @@ class NLPController(BaseController):
         sources=self._build_sources(selected_documents) if include_sources else []
         quality=self.build_answer_quality(answer or "", sources, selected_documents, verify_claims=verify_claims)
 
-        max_regenerations = get_settings().ANSWER_MAX_VERIFICATION_REGENERATIONS
+        max_regenerations = settings.ANSWER_MAX_VERIFICATION_REGENERATIONS
         if verify_claims and answer and max_regenerations > 0:
             for attempt in range(1, max_regenerations + 1):
                 if quality["citation_faithfulness"] >= 1.0 and quality["unsupported_claim_rate"] == 0.0:
@@ -340,7 +366,7 @@ class NLPController(BaseController):
                 quality=self.build_answer_quality(answer, sources, selected_documents, verify_claims=verify_claims)
 
         evidence_panel = self.build_evidence_panel(retrived_document, selected_documents)
-        return answer , full_prompt , chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel
+        return answer , full_prompt , chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel, expanded_query
 
     CONVERSATION_CONTEXT_TURNS = 3
     CONVERSATION_ANSWER_CHARS = 400
@@ -401,33 +427,9 @@ class NLPController(BaseController):
         text=query or ""
         lowered=text.lower()
         expansions=[]
-        rules=[
-            (r"\bmart\b|maintenance[-\s]?and[-\s]?reliever", "maintenance-and-reliever therapy ICS-formoterol budesonide formoterol as-needed single-inhaler combination"),
-            (r"\bair\b|anti[-\s]?inflammatory reliever", "anti-inflammatory reliever low dose ICS-formoterol as-needed"),
-            (r"\bics\b|inhaled corticosteroid", "inhaled corticosteroid controller preventer corticosteroid"),
-            (r"\bsaba\b|short[-\s]?acting beta", "short-acting beta agonist reliever salbutamol albuterol SABA-only"),
-            (r"\blaba\b|long[-\s]?acting beta", "long-acting beta agonist formoterol salmeterol"),
-            (r"\baction plan\b|self[-\s]?management", "written asthma action plan personalised action plan monitor symptoms seek medical care"),
-            (r"\bobesity\b|overweight|weight", "weight reduction 5-10% 5–10% improve asthma control obesity comorbidity"),
-            (r"\binitial\b|newly diagnosed|first treatment", "initial pharmacological treatment low-dose ICS/formoterol as-needed AIR therapy"),
-            (r"\bstep 1\b|step one", "Step 1 preferred treatment adults adolescents low dose ICS-formoterol"),
-            (r"\bdiagnos", "confirm asthma diagnosis spirometry bronchodilator reversibility FeNO eosinophil variability"),
-            (r"\bexercise\b|bronchospasm", "exercise-induced bronchospasm before exercise SABA LTRA cromolyn NHLBI"),
-            (r"\bgina\b", "GINA 2026 Global Strategy for Asthma Management and Prevention GINA 2026 Summary Guide for Asthma Management and Prevention"),
-            (r"\bnice\b|ng80|bts", "NICE Asthma: diagnosis monitoring and chronic asthma management NG80"),
-            (r"\bnhlbi\b|naepp|epr4|epr[-\s]?4", "Asthma Quick Reference Guide 2020 NAEPP EPR-4 focused updates NHLBI"),
-            (r"step[-\s]?down|stepped?\s+down|de-?escalat|reduc\w*\s+(treatment|therapy|dose)", 
-            "stepping down maintenance therapy reduce controller dose de-escalation well-controlled asthma minimum effective treatment"),
-            (r"non[-\s]?pharmacolog|smoking cessation|vaccination|immunisation|obesity|weight reduction",
-            "non-pharmacological strategies smoking cessation physical activity weight reduction vaccination obesity self-management GINA guideline recommendations"),
-            (r"risk.*(exacerb|poor outcome|severe)|increased risk|identify.*risk|at risk",
-            "risk factors exacerbations severe exacerbation poor lung function FEV1 intubation past year emergency visit"),
-            (r"preferred treatment|step.?1.*persistent|persistent.*step.?1",
-            "preferred treatment Step 1 persistent asthma low-dose ICS SABA as needed NHLBI stepwise approach"),
-        ]
 
-        for pattern, expansion in rules:
-            if re.search(pattern, lowered, re.IGNORECASE):
+        for pat, expansion in self._EXPAND_PATTERNS:
+            if pat.search(lowered):
                 expansions.append(expansion)
 
         if not expansions:
@@ -446,44 +448,34 @@ class NLPController(BaseController):
         if fallback_results:
             candidate_groups.append(fallback_results)
 
-        try:
-            vector_results=await self.vectordb_client.search_by_vector(
+        results = await asyncio.gather(
+            self.vectordb_client.search_by_vector(
                 collection_name=collection_name,
                 vector=vector,
                 limit=limit,
                 score_threshold=score_threshold,
                 metadata_filter=metadata_filter,
-            )
-            if vector_results:
-                candidate_groups.append(vector_results)
-        except NotImplementedError:
-            pass
-
-        try:
-            keyword_results=await self.vectordb_client.search_by_keyword(
+            ),
+            self.vectordb_client.search_by_keyword(
                 collection_name=collection_name,
                 query=query,
                 limit=limit,
                 metadata_filter=metadata_filter,
-            )
-            if keyword_results:
-                candidate_groups.append(keyword_results)
-        except NotImplementedError:
-            pass
-
-        try:
-            hybrid_results=await self.vectordb_client.search_hybrid(
+            ),
+            self.vectordb_client.search_hybrid(
                 collection_name=collection_name,
                 vector=vector,
                 query=query,
                 limit=limit,
                 metadata_filter=metadata_filter,
                 rrf_k=settings.HYBRID_RRF_K,
-            )
-            if hybrid_results:
-                candidate_groups.append(hybrid_results)
-        except NotImplementedError:
-            pass
+            ),
+            return_exceptions=True,
+        )
+
+        for r in results:
+            if not isinstance(r, Exception) and r:
+                candidate_groups.append(r)
 
         return self._dedupe_documents(candidate_groups)[:limit]
 
@@ -892,8 +884,9 @@ class NLPController(BaseController):
             if citation.get("supported") and citation.get("source_chunk_id") is not None
         }
 
+        sources_cache = self._build_sources(selected_documents)
         for claim in self._extract_claims(answer):
-            claim_citations=self.verify_citations(claim, self._build_sources(selected_documents))
+            claim_citations=self.verify_citations(claim, sources_cache)
             supported_citations=[citation for citation in claim_citations if citation.get("supported")]
             evidence_text=self._evidence_text_for_claim(selected_documents, supported_citations, cited_chunk_ids)
             support_score=self._claim_support_score(claim, evidence_text)

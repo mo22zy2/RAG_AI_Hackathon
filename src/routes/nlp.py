@@ -209,7 +209,7 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
 
     conversation_history = [turn.model_dump() for turn in (search_request.conversation_history or [])]
 
-    answer, full_prompt, chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel = await nlp_controller.answer_rag_question(
+    answer, full_prompt, chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel, expanded_query = await nlp_controller.answer_rag_question(
         project=project,
         query=search_request.text,
         limit=search_request.limit,
@@ -259,7 +259,7 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
                 'citation_faithfulness': quality.get("citation_faithfulness", 0.0),
                 'disclaimer': disclaimer,
                 'query': search_request.text,
-                'expanded_query': nlp_controller.expand_query(search_request.text) if use_query_expansion else search_request.text,
+                'expanded_query': expanded_query,
                 'query_expanded': use_query_expansion,
             }
         )
@@ -285,7 +285,7 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
             'citation_faithfulness': quality.get("citation_faithfulness", 0.0),
             'disclaimer': disclaimer,
             'query': search_request.text,
-            'expanded_query': nlp_controller.expand_query(search_request.text) if use_query_expansion else search_request.text,
+            'expanded_query': expanded_query,
             'query_expanded': use_query_expansion,
         }
     )
