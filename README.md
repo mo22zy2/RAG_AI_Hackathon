@@ -42,14 +42,39 @@ Full benchmark dashboard: `eval/benchmark_dashboard_FINAL_20260814.md`
 
 | | Before Optimization | After Optimization | Change |
 |---|---:|---:|---:|
-| **Total elapsed** | 375.9s | 281.8s | **−25%** |
-| **Avg per question** | 12.5s | 9.4s | **−3.1s** |
+| **Total elapsed** | 375.9s | 237.2s | **−37%** |
+| **Avg per question** | 12.5s | 7.9s | **−4.6s** |
 | Safety accuracy | 0.967 | 1.000 | +0.033 |
 | Refusal accuracy | 0.967 | 1.000 | +0.033 |
 | Citation faithfulness | 0.953 | 1.000 | +0.047 |
 | Keyword hit rate | 0.900 | 1.000 | +0.100 |
 
 Optimizations: parallelized hybrid search sub-queries, parallelized rerank candidate building, cached settings/sources, pre-compiled regex patterns, eliminated redundant DB queries. Zero logic changes — same retrieval, rerank, and generation.
+
+### Streaming Responses
+
+The answer endpoint supports **Server-Sent Events (SSE) streaming** for real-time token delivery:
+
+```bash
+# Streaming endpoint
+curl -X POST http://localhost:8000/api/v1/nlp/index/answer/1/stream \
+  -H "Content-Type: application/json" \
+  -d '{"text": "What is the preferred controller at Step 1?", "limit": 8, "retrieval_mode": "hybrid", "rerank": true}'
+```
+
+**SSE event types:**
+| Event | Payload | Description |
+|---|---|---|
+| `phase` | `{"phase": "classifying"}` | Safety risk classification in progress |
+| `phase` | `{"phase": "retrieving"}` | Hybrid retrieval + reranking |
+| `phase` | `{"phase": "reranking"}` | Cohere rerank-v3.5 in progress |
+| `phase` | `{"phase": "checking_evidence"}` | Confidence gate evaluation |
+| `phase` | `{"phase": "generating"}` | LLM generation (streaming tokens) |
+| `phase` | `{"phase": "verifying"}` | Citation + claim verification |
+| `token` | `{"token": "..."}` | Individual generated token |
+| `done` | Full answer payload | Final answer with sources, quality metrics, evidence panel |
+
+The streaming endpoint falls back to non-streaming if the LLM streaming call fails, delivering the full answer as a single `token` event with `{"full": true}`.
 
 ---
 
@@ -73,6 +98,7 @@ flowchart LR
     Prompt --> LLM["Generation Provider (Command-A)"]
     LLM --> Verify["Citation + Claim Verification"]
     Verify --> Answer["Grounded Answer + Evidence Panel"]
+    LLM -.->|SSE streaming| Stream["Streaming Response (/stream)"]
 ```
 
 ### Safety Layers
@@ -190,7 +216,13 @@ curl -X POST http://localhost:8000/api/v1/nlp/index/push/1
 ### 7. Ask a question
 
 ```bash
+# Synchronous answer
 curl -X POST http://localhost:8000/api/v1/nlp/index/answer/1 \
+  -H "Content-Type: application/json" \
+  -d '{"text": "What is the preferred controller at Step 1?", "limit": 8, "retrieval_mode": "hybrid", "rerank": true}'
+
+# Streaming answer (SSE)
+curl -X POST http://localhost:8000/api/v1/nlp/index/answer/1/stream \
   -H "Content-Type: application/json" \
   -d '{"text": "What is the preferred controller at Step 1?", "limit": 8, "retrieval_mode": "hybrid", "rerank": true}'
 ```
@@ -278,7 +310,7 @@ RAG_AI_Hackathon/
 │   ├── requirments.txt              # intentionally misspelled
 │   ├── .env                         # gitignored runtime config
 │   ├── controllers/
-│   │   └── NLPController.py         # Core: search, expand, rerank, verify, answer
+│   │   └── NLPController.py         # Core: search, expand, rerank, verify, answer (sync + streaming)
 │   ├── routes/
 │   ├── models/
 │   ├── helpers/
@@ -291,7 +323,7 @@ RAG_AI_Hackathon/
 │   ├── config/
 │   │   └── safety_config.json       # Risk rules, refusals
 │   ├── tests/
-│   │   └── test_core.py             # 42 unit tests
+│   │   └── test_core.py             # 49 unit tests
 │   └── assets/files/{project_id}/
 ├── AGENTS.md
 └── README.md
