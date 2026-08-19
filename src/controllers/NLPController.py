@@ -366,6 +366,7 @@ class NLPController(BaseController):
                 quality=self.build_answer_quality(answer, sources, selected_documents, verify_claims=verify_claims)
 
         evidence_panel = self.build_evidence_panel(retrived_document, selected_documents)
+        confidence = self._apply_post_generation_confidence(confidence, quality)
         return answer , full_prompt , chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel, expanded_query
 
     CONVERSATION_CONTEXT_TURNS = 3
@@ -673,6 +674,33 @@ class NLPController(BaseController):
             "generation_allowed": generation_allowed,
             "reason": reason,
         }
+
+    _CONFIDENCE_DOWNGRADE = {"high": "medium", "medium": "low", "low": "low"}
+
+    @classmethod
+    def _apply_post_generation_confidence(cls, confidence: dict, quality: dict):
+        """Slide 11 ('Add a confidence level') requires confidence to reflect
+        citation coverage and safety checks, not just the pre-generation
+        retrieval score. `_build_confidence` runs before generation (it gates
+        whether generation happens at all) and must stay a pure pre-generation
+        signal for its existing tests. This folds the post-generation
+        citation/claim verification outcome into a copy shown to the caller,
+        without touching the gate itself."""
+        level = confidence.get("confidence_level")
+        if level not in cls._CONFIDENCE_DOWNGRADE:
+            return confidence
+
+        failed_verification = (
+            quality.get("citation_faithfulness", 1.0) < 1.0
+            or quality.get("unsupported_claim_rate", 0.0) > 0.0
+        )
+        if not failed_verification:
+            return confidence
+
+        downgraded = dict(confidence)
+        downgraded["confidence_level"] = cls._CONFIDENCE_DOWNGRADE[level]
+        downgraded["downgrade_reason"] = "citation_or_claim_verification_failed"
+        return downgraded
 
     @staticmethod
     def _build_confidence_summary(confidence: dict):

@@ -6,7 +6,7 @@
 <title>BreathX RAG — Clinical Asthma Q&amp;A</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Arabic:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0b0f1a;
@@ -38,7 +38,7 @@
   html { scroll-padding-top: 76px; }
 
   body {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', 'Noto Sans Arabic', system-ui, sans-serif;
     background:
       radial-gradient(1100px 600px at 12% -10%, var(--bg-glow-1), transparent 60%),
       radial-gradient(900px 500px at 100% 0%, var(--bg-glow-2), transparent 55%),
@@ -258,8 +258,8 @@
   }
   .unsupported-box .uc-title { font-size: 11.5px; font-weight: 700; color: var(--red); margin-bottom: 8px; }
   .unsupported-box ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
-  .unsupported-box li { font-size: 12px; color: var(--muted); line-height: 1.55; padding-left: 14px; position: relative; }
-  .unsupported-box li::before { content: '\2014'; position: absolute; left: 0; color: var(--red); }
+  .unsupported-box li { font-size: 12px; color: var(--muted); line-height: 1.55; padding-inline-start: 14px; position: relative; }
+  .unsupported-box li::before { content: '\2014'; position: absolute; inset-inline-start: 0; color: var(--red); }
 
   /* ---------- Answer ---------- */
   .answer-box {
@@ -281,10 +281,10 @@
   .answer-list { list-style: none; margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; }
   .answer-list:last-child { margin-bottom: 0; }
   .answer-list li {
-    position: relative; padding-left: 20px; line-height: 1.75;
+    position: relative; padding-inline-start: 20px; line-height: 1.75;
   }
   .answer-list li::before {
-    content: ''; position: absolute; left: 3px; top: 9px;
+    content: ''; position: absolute; inset-inline-start: 3px; top: 9px;
     width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
   }
 
@@ -455,7 +455,7 @@
   <div class="query-card">
     <div class="query-input-wrap">
       <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <input id="query" type="text" placeholder="Ask a clinical asthma question..." autofocus>
+      <input id="query" type="text" dir="auto" placeholder="Ask a clinical asthma question..." autofocus>
     </div>
     <select id="mode">
       <option value="rerank">Hybrid + Rerank</option>
@@ -581,7 +581,7 @@ function renderHistory() {
   badge.textContent = chatHistory.length;
   list.innerHTML = chatHistory.map(h => `
     <span class="history-chip ${h.isRefusal ? 'refused' : ''}" data-id="${h.id}" title="${esc(h.question)}">
-      <span class="hq-dot"></span><span class="hq-text">${esc(h.question)}</span>
+      <span class="hq-dot"></span><span class="hq-text" dir="${isArabic(h.question) ? 'rtl' : 'ltr'}">${esc(h.question)}</span>
     </span>
   `).join('');
 }
@@ -709,6 +709,8 @@ function showAnswer(data) {
 
   // Answer — render inline [Doc, p. N] refs as compact chips instead of raw brackets
   answerText.innerHTML = formatAnswer(data.answer || 'No answer generated.');
+  const answerIsArabic = isArabic(data.answer);
+  answerText.dir = answerIsArabic ? 'rtl' : 'ltr';
 
   if (data.disclaimer) {
     disclaimer.innerHTML = warningIcon() + `<span>${esc(data.disclaimer)}</span>`;
@@ -750,7 +752,7 @@ function showAnswer(data) {
   const unsupportedClaims = q.unsupported_claims || [];
   if (unsupportedClaims.length) {
     unsupportedBox.innerHTML = `<div class="uc-title">${unsupportedClaims.length} unsupported claim${unsupportedClaims.length > 1 ? 's' : ''} detected</div>
-      <ul>${unsupportedClaims.map(c => `<li>${esc(c.claim)}</li>`).join('')}</ul>`;
+      <ul dir="${answerIsArabic ? 'rtl' : 'ltr'}">${unsupportedClaims.map(c => `<li>${esc(c.claim)}</li>`).join('')}</ul>`;
     unsupportedBox.className = 'unsupported-box';
   } else {
     unsupportedBox.className = 'unsupported-box hidden';
@@ -837,8 +839,9 @@ function showRefusal(data) {
   const msg = data.answer || 'This query cannot be answered.';
   answerText.innerHTML = `<div class="refusal-box">
     <div class="refusal-icon">${alertIcon()}</div>
-    <div><h3>${esc(reasonLabel)}</h3><p>${esc(msg)}</p></div>
+    <div><h3>${esc(reasonLabel)}</h3><p dir="${isArabic(msg) ? 'rtl' : 'ltr'}">${esc(msg)}</p></div>
   </div>`;
+  answerText.dir = 'ltr';
   disclaimer.className = 'disclaimer hidden';
   riskBadge.className = 'risk-badge hidden';
   pipelineUsed.className = 'pipeline-used hidden';
@@ -974,6 +977,13 @@ function esc(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+// Content direction is per-answer, not per-page: the same UI answers both
+// English and Arabic queries (language fidelity — Arabic in, Arabic out), so
+// each rendered block picks its own dir rather than the page defaulting to one.
+function isArabic(text) {
+  return /[؀-ۿ]/.test(text || '');
 }
 
 function checkIcon() { return '<svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
