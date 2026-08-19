@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy import Index
 
 from .breathx_rag_base import SQLAlchemyBase
-from sqlalchemy import ForeignKey, String, Column,Integer,DateTime, func
+from sqlalchemy import ForeignKey, String, Column,Integer,DateTime, func, Boolean
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -23,6 +23,7 @@ class DataChunk(SQLAlchemyBase):
     
     chunk_project_id=Column(Integer,ForeignKey('projects.project_id'),nullable=False)
     chunk_asset_id = Column(Integer,ForeignKey('assets.asset_id'),nullable=False)
+    chunk_indexed=Column(Boolean,default=False,nullable=False,server_default='false')
     
     project=relationship("Project",back_populates='chunks')
     asset=relationship('Asset',back_populates='chunks')

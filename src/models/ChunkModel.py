@@ -1,4 +1,4 @@
-from sqlalchemy import func, select ,delete, text
+from sqlalchemy import func, select ,delete, text, update
 
 from .BaseDataModel import BaseDataModel
 from .db_schemas import DataChunk
@@ -70,3 +70,46 @@ class ChunkModel(BaseDataModel):
                 total_count = records_count.scalar()
                 
         return total_count
+
+    async def get_unindexed_chunks(self, project_id: int, page_no: int = 1, page_size: int = 50):
+        async with self.db_client() as session:
+            query = (
+                select(DataChunk)
+                .where(DataChunk.chunk_project_id == project_id)
+                .where(DataChunk.chunk_indexed == False)
+                .order_by(DataChunk.chunk_id)
+                .offset((page_no - 1) * page_size)
+                .limit(page_size)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    async def get_unindexed_chunk_count(self, project_id: int):
+        async with self.db_client() as session:
+            count_sql = (
+                select(func.count())
+                .where(DataChunk.chunk_project_id == project_id)
+                .where(DataChunk.chunk_indexed == False)
+            )
+            result = await session.execute(count_sql)
+            return result.scalar()
+
+    async def mark_chunks_indexed(self, chunk_ids: list):
+        if not chunk_ids:
+            return
+        async with self.db_client() as session:
+            await session.execute(
+                update(DataChunk)
+                .where(DataChunk.chunk_id.in_(chunk_ids))
+                .values(chunk_indexed=True)
+            )
+            await session.commit()
+
+    async def reset_chunk_indexed(self, project_id: int):
+        async with self.db_client() as session:
+            await session.execute(
+                update(DataChunk)
+                .where(DataChunk.chunk_project_id == project_id)
+                .values(chunk_indexed=False)
+            )
+            await session.commit()

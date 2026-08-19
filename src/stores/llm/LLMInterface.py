@@ -19,6 +19,12 @@ class LLMInterface(ABC):
                       temperature:float=0.8):
         pass
 
+    async def generate_text_stream(self, prompt:str,
+                             chat_history:list=None,
+                             max_output_tokens:int=None,
+                             temperature:float=0.8):
+        raise NotImplementedError("Streaming not implemented for this provider")
+
 
     @abstractmethod
     async def embed_text(self,text:str,document_type:str=None):

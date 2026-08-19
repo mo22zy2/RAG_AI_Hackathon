@@ -209,6 +209,10 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ---------- Streaming cursor ---------- */
+  .cursor-blink { animation: blink 0.7s step-end infinite; color: var(--accent); font-weight: 300; }
+  @keyframes blink { 50% { opacity: 0; } }
+
   /* ---------- Skeleton ---------- */
   .skeleton-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; margin-top: 20px; }
   .sk-line { height: 12px; border-radius: 6px; margin-bottom: 10px; background: linear-gradient(90deg, var(--surface-2) 25%, #202a40 37%, var(--surface-2) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
@@ -641,57 +645,120 @@ async function ask() {
   const resultsEl = document.getElementById('results');
   const emptyEl = document.getElementById('empty');
   const examplesEl = document.getElementById('examples');
+  const answerText = document.getElementById('answerText');
   const btn = document.getElementById('askBtn');
 
   btn.disabled = true;
   statusEl.className = 'status loading';
-  statusEl.innerHTML = '<span class="spinner"></span> Retrieving evidence and generating answer&hellip;';
+  statusEl.innerHTML = '<span class="spinner"></span> Checking safety&hellip;';
   skeletonEl.className = 'skeleton-block';
   resultsEl.className = 'hidden results';
   emptyEl.className = 'hidden';
   examplesEl.className = 'hidden';
+  answerText.innerHTML = '';
+
+  const payload = {
+    text: q,
+    limit: 8,
+    retrieval_mode: isRerank ? 'hybrid' : mode,
+    rerank: isRerank,
+    expand_query: true,
+    conversation_history: chatHistory.slice(0, 4).reverse().map(h => ({
+      question: h.question,
+      answer: h.isRefusal ? null : (h.data?.answer || null),
+    })),
+  };
+
+  let answerTokens = '';
+  let finalData = null;
 
   try {
-    const payload = {
-      text: q,
-      limit: 8,
-      retrieval_mode: isRerank ? 'hybrid' : mode,
-      rerank: isRerank,
-      expand_query: true,
-      conversation_history: chatHistory.slice(0, 4).reverse().map(h => ({
-        question: h.question,
-        answer: h.isRefusal ? null : (h.data?.answer || null),
-      })),
-    };
-
-    const res = await fetch(`${API}/api/v1/nlp/index/answer/${PROJECT_ID}`, {
+    const res = await fetch(`${API}/api/v1/nlp/index/answer/${PROJECT_ID}/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    const data = await res.json();
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      let eventType = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+          handleSSEEvent(eventType, data);
+        }
+      }
+    }
 
     statusEl.className = 'status';
     skeletonEl.className = 'hidden';
     btn.disabled = false;
 
-    const isRefusal = data.risk_assessment?.risk_level === 'refuse_redirect'
-                   || data.confidence?.generation_allowed === false
-                   || !data.answer;
+    if (finalData) {
+      const isRefusal = finalData.risk_assessment?.risk_level === 'refuse_redirect'
+                     || finalData.confidence?.generation_allowed === false
+                     || !finalData.answer;
 
-    if (isRefusal) {
-      showRefusal(data);
-    } else {
-      showAnswer(data);
+      if (isRefusal) showRefusal(finalData);
+      else showAnswer(finalData);
+      saveHistoryEntry(q, mode, finalData, isRefusal);
     }
-    saveHistoryEntry(q, mode, data, isRefusal);
   } catch (err) {
     skeletonEl.className = 'hidden';
     statusEl.className = 'status error';
     statusEl.textContent = `Error: ${err.message}`;
     btn.disabled = false;
+  }
+
+  function handleSSEEvent(type, data) {
+    const PHASE_LABELS = {
+      classifying: 'Checking safety',
+      retrieving: 'Searching evidence',
+      reranking: 'Ranking results',
+      checking_evidence: 'Verifying evidence',
+      generating: 'Generating answer',
+      verifying: 'Verifying citations',
+      regenerating: 'Regenerating answer',
+    };
+
+    switch (type) {
+      case 'phase':
+        statusEl.innerHTML = `<span class="spinner"></span> ${PHASE_LABELS[data.phase] || data.phase}&hellip;`;
+        if (data.phase === 'generating') {
+          skeletonEl.className = 'hidden';
+          resultsEl.className = 'results';
+          answerText.innerHTML = '<span class="cursor-blink">|</span>';
+        }
+        break;
+
+      case 'token':
+        if (data.full) {
+          answerTokens = data.token;
+        } else {
+          answerTokens += data.token;
+        }
+        answerText.innerHTML = formatAnswer(answerTokens) + '<span class="cursor-blink">|</span>';
+        break;
+
+      case 'done':
+        finalData = data;
+        statusEl.innerHTML = '<span class="spinner"></span> Verifying citations&hellip;';
+        break;
+    }
   }
 }
 

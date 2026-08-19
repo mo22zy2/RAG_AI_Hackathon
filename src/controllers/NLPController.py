@@ -131,18 +131,7 @@ class NLPController(BaseController):
         query_vector = None
         collection_name = self.create_collection_name(project_id=project.project_id)
         expanded_query = self.expand_query(text) if expand_query else text
-        # BM25/keyword search uses the RAW query to avoid precision dilution
-        # from the many OR'd expanded terms; vector embedding uses the full
-        # expanded query for richer semantic context.
         raw_query = text
-
-        vectors = await self.embedding_client.embed_text(
-            text=expanded_query,
-            document_type=DocumentType.QUERY.value
-        )
-
-        if vectors and isinstance(vectors, list) and len(vectors) > 0:
-            query_vector = vectors[0]
 
         if retrieval_mode == "keyword":
             results = await self.vectordb_client.search_by_keyword(
@@ -152,6 +141,12 @@ class NLPController(BaseController):
                 metadata_filter=metadata_filter,
             )
         elif retrieval_mode == "vector":
+            vectors = await self.embedding_client.embed_text(
+                text=expanded_query,
+                document_type=DocumentType.QUERY.value
+            )
+            if vectors and isinstance(vectors, list) and len(vectors) > 0:
+                query_vector = vectors[0]
             if query_vector is None:
                 return None
             results = await self.vectordb_client.search_by_vector(
@@ -162,15 +157,31 @@ class NLPController(BaseController):
                 metadata_filter=metadata_filter,
             )
         else:  # hybrid
+            embed_task = asyncio.ensure_future(self.embedding_client.embed_text(
+                text=expanded_query,
+                document_type=DocumentType.QUERY.value
+            ))
+            keyword_task = asyncio.ensure_future(self.vectordb_client.search_by_keyword(
+                collection_name=collection_name,
+                query=raw_query,
+                limit=limit,
+                metadata_filter=metadata_filter,
+            ))
+            vectors, keyword_results = await asyncio.gather(embed_task, keyword_task)
+
+            if vectors and isinstance(vectors, list) and len(vectors) > 0:
+                query_vector = vectors[0]
             if query_vector is None:
                 return None
+
+            settings = get_settings()
             results = await self.vectordb_client.search_hybrid(
                 collection_name=collection_name,
                 vector=query_vector,
                 query=raw_query,
                 limit=limit,
                 metadata_filter=metadata_filter,
-                rrf_k=get_settings().HYBRID_RRF_K,
+                rrf_k=settings.HYBRID_RRF_K,
             )
 
         if not results:
@@ -369,6 +380,203 @@ class NLPController(BaseController):
         confidence = self._apply_post_generation_confidence(confidence, quality)
         return answer , full_prompt , chat_history, sources, risk_assessment, confidence, quality, disclaimer, evidence_panel, expanded_query
 
+
+    @staticmethod
+    def _sse_event(event_type: str, data: dict) -> str:
+        return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+    async def answer_rag_question_stream(self, project: Project, query: str, limit: int = 5,
+                                          score_threshold: float = None,
+                                          metadata_filter: dict = None,
+                                          include_sources: bool = True,
+                                          retrieval_mode: str = "hybrid",
+                                          rerank: bool = True,
+                                          rerank_top_k: int = None,
+                                          expand_query: bool = True,
+                                          verify_claims: bool = True,
+                                          conversation_history: list = None):
+        settings = get_settings()
+        disclaimer = self._clinical_disclaimer()
+
+        yield self._sse_event("phase", {"phase": "classifying"})
+
+        conversation_block = self._build_conversation_block(conversation_history)
+        retrieval_query = self._build_retrieval_query(query, conversation_history)
+        expanded_query = self.expand_query(retrieval_query) if expand_query else retrieval_query
+        risk_assessment = self.classify_input_risk(query)
+        refusal_answer = self._build_refusal_answer(risk_assessment)
+
+        if risk_assessment["risk_level"] == "refuse_redirect":
+            confidence = self._build_confidence([], [], question=query)
+            confidence["generation_allowed"] = False
+            confidence["reason"] = "blocked_by_safety_classifier"
+            quality = self.build_answer_quality(refusal_answer, [], [], verify_claims=False)
+            evidence_panel = {"total_retrieved": 0, "total_selected": 0, "retrieval_coverage": {"documents": [], "unique_documents": 0, "page_range": {}}, "chunks": []}
+            yield self._sse_event("done", {
+                "answer": refusal_answer, "sources": [], "risk_assessment": risk_assessment,
+                "confidence": confidence, "quality": quality, "disclaimer": disclaimer,
+                "evidence_panel": evidence_panel, "expanded_query": expanded_query,
+            })
+            return
+
+        yield self._sse_event("phase", {"phase": "retrieving"})
+
+        retrived_document = await self.search_vector_db_collection(
+            project=project, text=retrieval_query,
+            limit=max(limit, settings.RETRIEVAL_TOP_K),
+            score_threshold=score_threshold if score_threshold is not None else settings.RETRIEVAL_SCORE_THRESHOLD,
+            metadata_filter=metadata_filter, retrieval_mode=retrieval_mode,
+            rerank=rerank, rerank_top_k=rerank_top_k or settings.RERANK_TOP_K,
+            expand_query=expand_query,
+        )
+
+        if not retrived_document or len(retrived_document) == 0:
+            confidence = self._build_confidence([], [], question=query)
+            quality = self.build_answer_quality("", [], [], verify_claims=False)
+            evidence_panel = {"total_retrieved": 0, "total_selected": 0, "retrieval_coverage": {"documents": [], "unique_documents": 0, "page_range": {}}, "chunks": []}
+            yield self._sse_event("done", {
+                "answer": "", "sources": [], "risk_assessment": risk_assessment,
+                "confidence": confidence, "quality": quality, "disclaimer": disclaimer,
+                "evidence_panel": evidence_panel, "expanded_query": expanded_query,
+            })
+            return
+
+        if rerank:
+            yield self._sse_event("phase", {"phase": "reranking"})
+
+        yield self._sse_event("phase", {"phase": "checking_evidence"})
+
+        system_prompt = self.template_parser.get("rag", "system_prompt")
+        reserved_chars = FOOTER_RESERVE_CHARS + len(query) + len(conversation_block) + 50
+        selected_documents = self._select_documents_for_prompt(
+            retrived_document=retrived_document,
+            max_documents=limit or settings.ANSWER_TOP_K,
+            max_context_chars=settings.MAX_CONTEXT_CHARS,
+            reserved_chars=reserved_chars,
+        )
+        confidence = self._build_confidence(retrived_document, selected_documents, question=query)
+
+        if not confidence["generation_allowed"]:
+            refusals = (get_safety_config().get("refusals") or {})
+            refusal = refusals.get("insufficient_official_evidence",
+                "I do not have enough official guideline evidence to answer this safely. "
+                "Please consult a qualified healthcare professional or ask a question "
+                "within the indexed asthma guideline scope.")
+            sources = self._build_sources(selected_documents)
+            quality = self.build_answer_quality(refusal, sources, selected_documents, verify_claims=False)
+            evidence_panel = self.build_evidence_panel(retrived_document, selected_documents)
+            yield self._sse_event("done", {
+                "answer": refusal, "sources": sources, "risk_assessment": risk_assessment,
+                "confidence": confidence, "quality": quality, "disclaimer": disclaimer,
+                "evidence_panel": evidence_panel, "expanded_query": expanded_query,
+            })
+            return
+
+        documnets_prompts = "\n".join([
+            self._render_document_prompt(idx, doc)
+            for idx, doc in enumerate(selected_documents)
+        ])
+        footer_prompt = self.template_parser.get("rag", "footer_prompt")
+
+        if risk_assessment["risk_level"] == "needs_caution":
+            footer_prompt = (
+                "SAFETY NOTE: The user appears to be asking about a specific person's "
+                "symptoms. Your answer MUST begin by clearly stating that you cannot "
+                "provide a diagnosis or prescribe medication without a clinical "
+                "assessment, and that they should consult a qualified healthcare "
+                "professional. Then you may share the relevant general guideline "
+                "information from the documents above, with citations.\n\n"
+                + footer_prompt
+            )
+
+        chat_history = [
+            self.generation_client.construct_prompt(
+                prompt=system_prompt,
+                role=self.generation_client.enums.SYSTEM.value,
+            )
+        ]
+        full_prompt = "\n\n".join(filter(None, [
+            documnets_prompts, conversation_block,
+            f"## User Question:\n{query}", footer_prompt,
+        ]))
+
+        yield self._sse_event("phase", {"phase": "generating"})
+
+        answer = ""
+        try:
+            async for token in self.generation_client.generate_text_stream(
+                prompt=full_prompt, chat_history=chat_history
+            ):
+                answer += token
+                yield self._sse_event("token", {"token": token})
+        except Exception:
+            answer = None
+
+        if answer is None:
+            answer = await self.generation_client.generate_text(
+                prompt=full_prompt, chat_history=chat_history
+            )
+            if answer:
+                yield self._sse_event("phase", {"phase": "generating"})
+                yield self._sse_event("token", {"token": answer, "full": True})
+
+        if risk_assessment["risk_level"] == "needs_caution" and answer:
+            answer = (
+                "I can't diagnose this person or prescribe medication without a "
+                "clinical assessment. Please consult a qualified healthcare "
+                "professional. Here is general information from the guidelines:\n\n"
+            ) + answer
+
+        sources = self._build_sources(selected_documents) if include_sources else []
+        yield self._sse_event("phase", {"phase": "verifying"})
+        quality = self.build_answer_quality(answer or "", sources, selected_documents, verify_claims=verify_claims)
+
+        max_regenerations = settings.ANSWER_MAX_VERIFICATION_REGENERATIONS
+        if verify_claims and answer and max_regenerations > 0:
+            for attempt in range(1, max_regenerations + 1):
+                if quality["citation_faithfulness"] >= 1.0 and quality["unsupported_claim_rate"] == 0.0:
+                    break
+
+                yield self._sse_event("phase", {"phase": "regenerating"})
+
+                correction_footer = (
+                    "IMPORTANT: Your previous answer draft failed automated verification: "
+                    "every factual claim must carry the citation [Document Name, p. PAGE] using the "
+                    "EXACT document names from the '## Document Name' headers above. "
+                    "Rewrite the answer from scratch, using ONLY the documents above, cite every claim, "
+                    "and do not add pleasantries or restate the question."
+                )
+                chat_history = [
+                    self.generation_client.construct_prompt(
+                        prompt=system_prompt,
+                        role=self.generation_client.enums.SYSTEM.value,
+                    )
+                ]
+                full_prompt = "\n\n".join(filter(None, [
+                    documnets_prompts, conversation_block,
+                    f"## User Question:\n{query}", correction_footer,
+                ]))
+                retry_answer = await self.generation_client.generate_text(
+                    prompt=full_prompt, chat_history=chat_history
+                )
+                if not retry_answer:
+                    break
+                answer = retry_answer
+                if risk_assessment["risk_level"] == "needs_caution":
+                    answer = (
+                        "I can't diagnose this person or prescribe medication without a "
+                        "clinical assessment. Please consult a qualified healthcare "
+                        "professional. Here is general information from the guidelines:\n\n"
+                    ) + answer
+                quality = self.build_answer_quality(answer, sources, selected_documents, verify_claims=verify_claims)
+
+        evidence_panel = self.build_evidence_panel(retrived_document, selected_documents)
+        yield self._sse_event("done", {
+            "answer": answer, "sources": sources, "risk_assessment": risk_assessment,
+            "confidence": confidence, "quality": quality, "disclaimer": disclaimer,
+            "evidence_panel": evidence_panel, "expanded_query": expanded_query,
+        })
+
     CONVERSATION_CONTEXT_TURNS = 3
     CONVERSATION_ANSWER_CHARS = 400
 
@@ -443,42 +651,8 @@ class NLPController(BaseController):
                                        limit: int, metadata_filter: dict = None,
                                        score_threshold: float = None,
                                        fallback_results: list = None):
-        settings=get_settings()
-        candidate_groups=[]
-
-        if fallback_results:
-            candidate_groups.append(fallback_results)
-
-        results = await asyncio.gather(
-            self.vectordb_client.search_by_vector(
-                collection_name=collection_name,
-                vector=vector,
-                limit=limit,
-                score_threshold=score_threshold,
-                metadata_filter=metadata_filter,
-            ),
-            self.vectordb_client.search_by_keyword(
-                collection_name=collection_name,
-                query=query,
-                limit=limit,
-                metadata_filter=metadata_filter,
-            ),
-            self.vectordb_client.search_hybrid(
-                collection_name=collection_name,
-                vector=vector,
-                query=query,
-                limit=limit,
-                metadata_filter=metadata_filter,
-                rrf_k=settings.HYBRID_RRF_K,
-            ),
-            return_exceptions=True,
-        )
-
-        for r in results:
-            if not isinstance(r, Exception) and r:
-                candidate_groups.append(r)
-
-        return self._dedupe_documents(candidate_groups)[:limit]
+        candidates = fallback_results or []
+        return self._dedupe_documents([candidates])[:limit]
 
     @staticmethod
     def _dedupe_documents(candidate_groups: list):

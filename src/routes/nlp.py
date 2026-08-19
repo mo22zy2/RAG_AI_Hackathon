@@ -1,5 +1,5 @@
 from fastapi import APIRouter, FastAPI, UploadFile, status, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from routes.schemes.nlp import PushRequest, SearchRequest
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
@@ -46,7 +46,6 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
         rerank_client=request.app.rerank_client
     )
 
-    # Create collection if it does not exist
     collection_name = nlp_controller.create_collection_name(project_id=project_id)
 
     _ = await request.app.vectordb_client.create_collection(
@@ -55,11 +54,22 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
         do_reset=push_request.do_reset,
     )
 
-    # Batching
-    total_chunks_count = await chunk_model.get_total_chunk(project_id=project.project_id)
+    if push_request.do_reset:
+        await chunk_model.reset_chunk_indexed(project_id=project.project_id)
+
+    unindexed_count = await chunk_model.get_unindexed_chunk_count(project_id=project.project_id)
+
+    if unindexed_count == 0:
+        return JSONResponse(
+            content={
+                "signal": Response.INSERT_INTO_VECTOR_DB_SUCCESS.value,
+                "inserted_items_count": 0,
+                "message": "All chunks already indexed"
+            }
+        )
 
     pbar = tqdm(
-        total=total_chunks_count,
+        total=unindexed_count,
         desc="Vector Indexing",
         position=0
     )
@@ -71,7 +81,7 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
     try:
         while has_records:
 
-            page_chunk = await chunk_model.get_project_chunks(
+            page_chunk = await chunk_model.get_unindexed_chunks(
                 project_id=project.project_id,
                 page_no=page_no
             )
@@ -94,9 +104,13 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
                 return JSONResponse(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={
-                        "signal": Response.INSERT_INTO_VECTOR_DB_ERROR.value
+                        "signal": Response.INSERT_INTO_VECTOR_DB_ERROR.value,
+                        "inserted_items_count": inserted_items_count,
+                        "remaining_items": unindexed_count - inserted_items_count,
                     }
                 )
+
+            await chunk_model.mark_chunks_indexed(chunk_ids)
 
             pbar.update(len(page_chunk))
             inserted_items_count += len(page_chunk)
@@ -287,5 +301,53 @@ async def answer_index_info(request: Request, project_id: int, search_request: S
             'query': search_request.text,
             'expanded_query': expanded_query,
             'query_expanded': use_query_expansion,
+        }
+    )
+
+
+@nlp_router.post('/index/answer/{project_id}/stream')
+async def answer_index_info_stream(request: Request, project_id: int, search_request: SearchRequest):
+
+    project_model = await ProjectModel.create_instance(
+        db_client=request.app.db_client
+    )
+    project = await project_model.get_project_or_create_one(
+        project_id=project_id
+    )
+    nlp_controller = NLPController(
+        vectordb_client=request.app.vectordb_client,
+        generation_client=request.app.generation_client,
+        embedding_client=request.app.embedding_client,
+        template_parser=request.app.template_parser,
+        rerank_client=request.app.rerank_client
+    )
+
+    use_rerank = search_request.rerank if search_request.rerank is not None else True
+    use_query_expansion = search_request.expand_query if search_request.expand_query is not None else True
+    conversation_history = [turn.model_dump() for turn in (search_request.conversation_history or [])]
+
+    async def event_generator():
+        async for event in nlp_controller.answer_rag_question_stream(
+            project=project,
+            query=search_request.text,
+            limit=search_request.limit,
+            score_threshold=search_request.score_threshold,
+            metadata_filter=search_request.metadata_filter,
+            include_sources=search_request.include_sources,
+            retrieval_mode=search_request.retrieval_mode,
+            rerank=use_rerank,
+            expand_query=use_query_expansion,
+            verify_claims=bool(search_request.verify_claims),
+            conversation_history=conversation_history,
+        ):
+            yield event
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         }
     )

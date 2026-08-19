@@ -50,6 +50,12 @@ async def lifespan(app: FastAPI):
 
     await app.vectordb_client.connect()
 
+    async with app.db_engine.connect() as conn:
+        await conn.execute(__import__('sqlalchemy').text(
+            "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS chunk_indexed BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
+        await conn.commit()
+
     app.template_parser=Template_Parser(
         language=settings.DEFAULT_LANGUAGE,
         default_language=settings.DEFAULT_LANGUAGE

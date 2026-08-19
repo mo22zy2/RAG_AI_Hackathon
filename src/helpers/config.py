@@ -40,7 +40,7 @@ class Settings (BaseSettings):
     GENERATION_DEFAULT_MAX_TOKENS:Optional[int]=None
     GENERATION_DEFAULT_TEMPERATURE:float=0.8
 
-    RETRIEVAL_TOP_K:int=10
+    RETRIEVAL_TOP_K:int=8
     ANSWER_TOP_K:int=8
     RETRIEVAL_SCORE_THRESHOLD:float=0.0
     ANSWER_MIN_TOP_SCORE:float=0.0
