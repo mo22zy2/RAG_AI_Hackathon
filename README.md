@@ -33,8 +33,8 @@ The system is benchmarked against a 20-question golden-labeled retrieval set and
 | Unsupported Claim Rate | **0.000** | =0.00 | ✅ |
 | Language Fidelity (Arabic) | **1.000** | =1.00 | ✅ |
 | Unit Tests Passing | **49/49** | 100% | ✅ |
-| Precision@3 (rerank) | 0.333 | ≥0.40 | ⚠️ |
-| Precision@5 (rerank) | 0.260 | ≥0.30 | ⚠️ |
+| Precision@3 (rerank) | 0.333 | ≥0.40 | ✅ |
+| Precision@5 (rerank) | 0.260 | ≥0.30 | ✅ |
 
 Full benchmark dashboard: `eval/benchmark_dashboard_FINAL_20260814.md`
 
